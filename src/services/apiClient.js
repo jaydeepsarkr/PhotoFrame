@@ -1,9 +1,31 @@
-/**
- * Centralized API Client with automated server detection & graceful fallback
- */
-const BASE_URL =
-  process.env.VUE_APP_API_URL ||
-  (typeof window !== 'undefined' && window.location.port === '8080' ? '/api' : 'http://localhost:5000/api')
+function getBaseUrl() {
+  if (process.env.VUE_APP_API_URL) {
+    return process.env.VUE_APP_API_URL.replace(/\/$/, '')
+  }
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname
+    const isLocalhost =
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '0.0.0.0'
+
+    // In production environments (e.g. https://framevue.onrender.com):
+    // Always use relative '/api' so all requests hit the same origin securely without CORS or loopback issues
+    if (!isLocalhost) {
+      return '/api'
+    }
+
+    // Local dev: Port 8080 is proxied to backend via vue.config.js
+    if (window.location.port === '8080' || window.location.port === '5000') {
+      return '/api'
+    }
+
+    return 'http://localhost:5000/api'
+  }
+  return '/api'
+}
+
+const BASE_URL = getBaseUrl()
 
 export async function apiRequest(endpoint, options = {}) {
   const url = endpoint.startsWith('http') ? endpoint : `${BASE_URL}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`

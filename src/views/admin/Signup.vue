@@ -111,6 +111,51 @@
               </div>
             </div>
 
+            <!-- Studio Name -->
+            <div>
+              <label class="block text-xs font-semibold text-charcoal-700 dark:text-cream-200 mb-1.5 uppercase tracking-wider">
+                Studio / Brand Name
+              </label>
+              <div class="relative">
+                <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-charcoal-400 dark:text-cream-400">
+                  <Store class="w-4 h-4" />
+                </div>
+                <input
+                  v-model="studioName"
+                  type="text"
+                  placeholder="e.g. Grand Artisan Framing Studio"
+                  class="w-full pl-10 pr-4 py-2.5 rounded-xl bg-cream-50/70 dark:bg-charcoal-800/80 border border-cream-300 dark:border-charcoal-700 text-charcoal-900 dark:text-cream-100 placeholder-charcoal-400 dark:placeholder-charcoal-500 text-sm focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-gold-500 transition-all"
+                />
+              </div>
+            </div>
+
+            <!-- Storefront Handle (adminId) -->
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <label class="block text-xs font-semibold text-charcoal-700 dark:text-cream-200 uppercase tracking-wider">
+                  Storefront Handle (adminId)
+                </label>
+                <span class="text-[11px] text-charcoal-500 dark:text-cream-400 font-mono">
+                  /s/{{ previewSlug }}
+                </span>
+              </div>
+              <div class="relative">
+                <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-charcoal-400 dark:text-cream-400">
+                  <Globe class="w-4 h-4" />
+                </div>
+                <input
+                  v-model="adminId"
+                  type="text"
+                  placeholder="e.g. grand-artisan"
+                  @input="customSlugEdited = true"
+                  class="w-full pl-10 pr-4 py-2.5 rounded-xl bg-cream-50/70 dark:bg-charcoal-800/80 border border-cream-300 dark:border-charcoal-700 text-charcoal-900 dark:text-cream-100 placeholder-charcoal-400 dark:placeholder-charcoal-500 text-sm focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-gold-500 transition-all"
+                />
+              </div>
+              <p class="text-[11px] text-charcoal-500 dark:text-cream-400 mt-1 font-mono truncate">
+                Live URL: <span class="text-gold-600 dark:text-gold-400 font-semibold">{{ storefrontPreviewUrl }}</span>
+              </p>
+            </div>
+
             <!-- Email Address -->
             <div>
               <label class="block text-xs font-semibold text-charcoal-700 dark:text-cream-200 mb-1.5 uppercase tracking-wider">
@@ -404,7 +449,8 @@ import {
   Store,
   KeyRound,
   Sun,
-  Moon
+  Moon,
+  Globe
 } from 'lucide-vue-next'
 
 export default {
@@ -425,11 +471,15 @@ export default {
     Store,
     KeyRound,
     Sun,
-    Moon
+    Moon,
+    Globe
   },
   data() {
     return {
       name: '',
+      studioName: '',
+      adminId: '',
+      customSlugEdited: false,
       email: '',
       password: '',
       confirmPassword: '',
@@ -449,6 +499,22 @@ export default {
   computed: {
     ...mapGetters(['darkMode']),
     ...mapGetters('auth', ['loginStep', 'pendingEmail']),
+    previewSlug() {
+      if (this.adminId && this.adminId.trim()) {
+        return this.adminId.toLowerCase().trim().replace(/[^a-z0-9_-]/g, '-')
+      }
+      if (this.studioName && this.studioName.trim()) {
+        return this.studioName.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '')
+      }
+      if (this.name && this.name.trim()) {
+        return this.name.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '')
+      }
+      return 'my-studio'
+    },
+    storefrontPreviewUrl() {
+      const origin = typeof window !== 'undefined' ? window.location.origin : 'https://framevue.onrender.com'
+      return `${origin}/s/${this.previewSlug}`
+    },
     step() {
       return this.loginStep || 'credentials'
     },
@@ -494,6 +560,13 @@ export default {
       return this.otpDigits.every(d => d.trim().length === 1)
     }
   },
+  watch: {
+    studioName(newVal) {
+      if (!this.customSlugEdited && newVal) {
+        this.adminId = newVal.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '')
+      }
+    }
+  },
   mounted() {
     if (this.$store.getters['auth/isAuthenticated']) {
       this.$router.replace('/admin')
@@ -521,7 +594,9 @@ export default {
           email: this.email,
           password: this.password,
           confirmPassword: this.confirmPassword,
-          adminSecret: this.adminSecret
+          adminSecret: this.adminSecret,
+          studioName: this.studioName,
+          adminId: this.previewSlug
         })
 
         this.statusMessage = response.message || 'Activation code sent via MailerSend!'

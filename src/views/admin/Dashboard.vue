@@ -1,5 +1,45 @@
 <template>
   <div class="space-y-8">
+    <!-- SaaS Tenant Dedicated Storefront Banner -->
+    <div class="rounded-2xl bg-gradient-to-r from-charcoal-900 via-charcoal-950 to-charcoal-900 text-white p-5 sm:p-6 border border-gold-500/30 shadow-lg relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      <div class="space-y-1.5 z-10">
+        <div class="flex items-center gap-2">
+          <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase bg-gold-500/20 text-gold-300 border border-gold-500/30">
+            SaaS Studio Storefront
+          </span>
+          <span class="text-xs text-cream-300/70 font-mono">Tenant ID: @{{ currentAdminId }}</span>
+        </div>
+        <h2 class="text-xl sm:text-2xl font-serif font-bold text-cream-100">
+          {{ currentStudioName }}
+        </h2>
+        <p class="text-xs sm:text-sm text-cream-200/80 flex items-center gap-2 font-mono">
+          <Globe class="w-3.5 h-3.5 text-gold-400 shrink-0" />
+          <span class="truncate">{{ fullStorefrontUrl }}</span>
+        </p>
+      </div>
+
+      <div class="flex items-center gap-2.5 w-full sm:w-auto z-10 shrink-0">
+        <button
+          type="button"
+          class="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-charcoal-800 hover:bg-charcoal-700 text-cream-100 border border-charcoal-700 hover:border-gold-500/50 text-xs font-semibold transition-all shadow-sm"
+          @click="copyStoreUrl"
+        >
+          <Copy class="w-3.5 h-3.5 text-gold-400" />
+          <span>Copy Storefront Link</span>
+        </button>
+
+        <a
+          :href="storefrontPath"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-gold-600 hover:bg-gold-500 text-white text-xs font-semibold transition-all shadow-sm"
+        >
+          <ExternalLink class="w-3.5 h-3.5" />
+          <span>Visit Store</span>
+        </a>
+      </div>
+    </div>
+
     <!-- KPI Statistics Grid (6 Cards) -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
       <StatsCard
@@ -176,7 +216,10 @@ import {
   Frame,
   Palette,
   ArrowRight,
-  Settings
+  Settings,
+  Globe,
+  Copy,
+  ExternalLink
 } from 'lucide-vue-next'
 import StatsCard from '@/components/admin/StatsCard.vue'
 import OrderTable from '@/components/admin/OrderTable.vue'
@@ -193,19 +236,45 @@ export default {
     Palette,
     ArrowRight,
     Settings,
+    Globe,
+    Copy,
+    ExternalLink,
     StatsCard,
     OrderTable
   },
   computed: {
+    ...mapGetters(['adminId', 'studioName', 'brandName']),
     ...mapGetters('orders', ['allOrders', 'orderStats']),
     ...mapGetters('frames', ['allFrames']),
     ...mapGetters('designs', ['allDesigns']),
+    currentAdminId() {
+      return this.adminId || 'jaydeep'
+    },
+    currentStudioName() {
+      return this.brandName || this.studioName || 'Atelier Cadre'
+    },
+    storefrontPath() {
+      return `/s/${this.currentAdminId}`
+    },
+    fullStorefrontUrl() {
+      const origin = typeof window !== 'undefined' ? window.location.origin : 'https://framevue.onrender.com'
+      return `${origin}/s/${this.currentAdminId}`
+    },
     recentOrders() {
       return this.allOrders.slice(0, 6)
     }
   },
   methods: {
     formatCurrency,
+    copyStoreUrl() {
+      const url = this.fullStorefrontUrl
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(url)
+        this.$toast?.success(`Copied store link: ${url}`, 'Storefront Link Copied')
+      } else {
+        this.$toast?.info(`Storefront URL: ${url}`, 'Storefront Link')
+      }
+    },
     resetDemoData() {
       localStorage.clear()
       window.location.reload()

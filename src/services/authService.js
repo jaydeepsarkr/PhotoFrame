@@ -82,6 +82,10 @@ export const authService = {
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem(TOKEN_KEY, token)
       localStorage.setItem(USER_KEY, JSON.stringify(admin))
+      if (admin && admin.adminId) {
+        localStorage.setItem('framevue_admin_id', admin.adminId)
+        localStorage.setItem('framevue_active_admin_id', admin.adminId)
+      }
     }
   },
 
@@ -89,6 +93,7 @@ export const authService = {
     if (typeof localStorage !== 'undefined') {
       localStorage.removeItem(TOKEN_KEY)
       localStorage.removeItem(USER_KEY)
+      localStorage.removeItem('framevue_admin_id')
     }
   },
 

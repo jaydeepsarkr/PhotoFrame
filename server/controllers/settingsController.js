@@ -1,4 +1,5 @@
 const Setting = require('../models/Setting')
+const { DEFAULT_ADMIN_ID } = require('../middleware/tenant')
 
 const DEFAULT_SETTINGS = {
   key: 'global_studio_settings',
@@ -78,23 +79,25 @@ const DEFAULT_SETTINGS = {
 
 /**
  * GET /api/settings
- * Retrieves active studio settings
+ * Retrieves active studio settings for this tenant
  */
 exports.getSettings = async (req, res, next) => {
   try {
     const mongoose = require('mongoose')
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
+
     if (mongoose.connection.readyState !== 1) {
       return res.json({
         success: true,
-        data: DEFAULT_SETTINGS,
+        data: { ...DEFAULT_SETTINGS, adminId },
         fallback: true,
         note: 'Database disconnected, using defaults'
       })
     }
 
-    let settings = await Setting.findOne({ key: 'global_studio_settings' })
+    let settings = await Setting.findOne({ adminId, key: 'global_studio_settings' })
     if (!settings) {
-      settings = await Setting.create(DEFAULT_SETTINGS)
+      settings = await Setting.create({ ...DEFAULT_SETTINGS, adminId })
     }
     res.json({
       success: true,
@@ -112,21 +115,23 @@ exports.getSettings = async (req, res, next) => {
 
 /**
  * PUT /api/settings
- * Updates studio settings
+ * Updates studio settings for this tenant
  */
 exports.updateSettings = async (req, res, next) => {
   try {
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
+
     console.log(`\n======================================================`)
-    console.log(`⚙️  [SETTINGS:UPDATE] Updating studio settings`)
-    console.log(`   Allow Theme Toggle: ${req.body.allowThemeToggle}`)
-    console.log(`   Theme Mode: ${req.body.themeMode}`)
-    console.log(`   Enable Design Section: ${req.body.enableDesignSection}`)
-    console.log(`   Enable Multi-Photo Upload: ${req.body.enableMultiPhotoUpload}`)
+    console.log(`⚙️  [SETTINGS:UPDATE] Updating studio settings for: ${adminId}`)
     console.log(`======================================================\n`)
 
+    // Prevent overwriting adminId via body
+    const updateData = { ...req.body }
+    delete updateData.adminId
+
     let settings = await Setting.findOneAndUpdate(
-      { key: 'global_studio_settings' },
-      { $set: req.body },
+      { adminId, key: 'global_studio_settings' },
+      { $set: updateData },
       { new: true, upsert: true, runValidators: true }
     )
 
@@ -137,6 +142,42 @@ exports.updateSettings = async (req, res, next) => {
     })
   } catch (error) {
     console.error('💥 [SETTINGS:UPDATE] Error saving settings:', error.message)
+    next(error)
+  }
+}
+
+/**
+ * GET /api/settings/public/:adminId
+ * Public endpoint – returns minimal branding for a given storefront
+ */
+exports.getPublicSettings = async (req, res, next) => {
+  try {
+    const adminId = (req.params.adminId || '').toLowerCase().trim()
+    if (!adminId) {
+      return res.status(400).json({ success: false, message: 'adminId is required' })
+    }
+
+    const settings = await Setting.findOne({ adminId, key: 'global_studio_settings' })
+    if (!settings) {
+      return res.status(404).json({ success: false, message: `Studio '${adminId}' not found` })
+    }
+
+    res.json({
+      success: true,
+      data: {
+        adminId,
+        brandName: settings.brandName,
+        brandSubtitle: settings.brandSubtitle,
+        logoUrl: settings.logoUrl,
+        currencySymbol: settings.currencySymbol,
+        deliveryFee: settings.deliveryFee,
+        freeDeliveryThreshold: settings.freeDeliveryThreshold,
+        announcementBanner: settings.announcementBanner,
+        enableDesignSection: settings.enableDesignSection,
+        footer: settings.footer
+      }
+    })
+  } catch (error) {
     next(error)
   }
 }

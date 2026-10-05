@@ -2,10 +2,17 @@ const mongoose = require('mongoose')
 
 const settingSchema = new mongoose.Schema(
   {
+    adminId: {
+      type: String,
+      required: true,
+      default: 'jaydeep',
+      lowercase: true,
+      trim: true,
+      index: true
+    },
     key: {
       type: String,
       default: 'global_studio_settings',
-      unique: true,
       index: true
     },
     // Studio Branding & Logo Identity
@@ -144,6 +151,9 @@ const settingSchema = new mongoose.Schema(
     timestamps: true
   }
 )
+
+// Unique settings per tenant
+settingSchema.index({ adminId: 1, key: 1 }, { unique: true })
 
 const Setting = mongoose.model('Setting', settingSchema)
 module.exports = Setting

@@ -80,11 +80,14 @@ const sendViaMailerSendApi = async ({ fromEmail, fromName, toEmail, adminName, s
 }
 
 /**
- * Fetch dynamic Studio Branding & Settings from MongoDB
+ * Fetch dynamic Studio Branding & Settings from MongoDB — scoped per admin/tenant
  */
-const getActiveBranding = async () => {
+const getActiveBranding = async (adminId) => {
   try {
-    const settings = await Setting.findOne({ key: 'global_studio_settings' })
+    const query = adminId
+      ? { adminId, key: 'global_studio_settings' }
+      : { key: 'global_studio_settings' }
+    const settings = await Setting.findOne(query)
     const brandName = (settings && settings.brandName && settings.brandName.trim()) || 'Atelier Cadre'
     const brandSubtitle = (settings && settings.brandSubtitle && settings.brandSubtitle.trim()) || 'Studio Console'
     const logoUrl = (settings && settings.logoUrl && settings.logoUrl.trim()) || ''
@@ -109,6 +112,7 @@ const getActiveBranding = async () => {
     }
   }
 }
+
 
 /**
  * Format dynamic brand header HTML with uploaded logo image or styled typography
@@ -354,12 +358,13 @@ const sendSignupOtpEmail = async ({ toEmail, otpCode, adminName = 'Administrator
 /**
  * Send New Order Notification Email to Admin Gmail
  */
-const sendNewOrderNotificationEmail = async ({ order, toEmail, adminName = 'Studio Administrator' }) => {
-  const branding = await getActiveBranding()
+const sendNewOrderNotificationEmail = async ({ order, toEmail, adminId, adminName = 'Studio Administrator' }) => {
+  const effectiveAdminId = adminId || order?.adminId
+  const branding = await getActiveBranding(effectiveAdminId)
 
   // Respect admin preference if notifications are turned off in settings
   if (branding.notifyAdminOnNewOrder === false && !toEmail) {
-    console.log(`ℹ️ [ORDER:EMAIL] Admin order notification is disabled in studio settings. Skipping dispatch.`)
+    console.log(`ℹ️ [ORDER:EMAIL] Admin order notification is disabled in studio settings for ${effectiveAdminId}. Skipping dispatch.`)
     return { success: true, skipped: true, message: 'Notification disabled in studio settings' }
   }
 

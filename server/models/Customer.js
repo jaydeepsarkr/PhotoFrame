@@ -2,10 +2,17 @@ const mongoose = require('mongoose')
 
 const customerSchema = new mongoose.Schema(
   {
+    adminId: {
+      type: String,
+      required: true,
+      default: 'jaydeep',
+      lowercase: true,
+      trim: true,
+      index: true
+    },
     id: {
       type: String,
       required: true,
-      unique: true,
       index: true
     },
     fullName: {
@@ -15,7 +22,6 @@ const customerSchema = new mongoose.Schema(
     email: {
       type: String,
       required: true,
-      unique: true,
       index: true,
       lowercase: true,
       trim: true
@@ -70,5 +76,10 @@ const customerSchema = new mongoose.Schema(
     timestamps: true
   }
 )
+
+// Compound indexes for tenant isolation
+customerSchema.index({ adminId: 1, email: 1 }, { unique: true })
+customerSchema.index({ adminId: 1, id: 1 }, { unique: true })
+customerSchema.index({ adminId: 1, isDeleted: 1 })
 
 module.exports = mongoose.model('Customer', customerSchema)

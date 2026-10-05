@@ -133,6 +133,35 @@
         </span>
       </div>
 
+      <!-- Dedicated Storefront Link Box -->
+      <div class="p-4 rounded-xl bg-gold-50/70 border border-gold-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="space-y-0.5">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-bold uppercase tracking-wider text-gold-900">Dedicated Storefront URL</span>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gold-200/70 text-gold-900">@{{ currentAdminId }}</span>
+          </div>
+          <p class="text-xs text-charcoal-700 font-mono">{{ fullStorefrontUrl }}</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button
+            type="button"
+            class="px-3.5 py-1.5 rounded-lg bg-white hover:bg-cream-100 text-charcoal-900 border border-gold-300 text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors"
+            @click="copyStoreUrl"
+          >
+            <Copy class="w-3.5 h-3.5 text-gold-600" />
+            <span>Copy Link</span>
+          </button>
+          <a
+            :href="'/s/' + currentAdminId"
+            target="_blank"
+            class="px-3.5 py-1.5 rounded-lg bg-gold-600 hover:bg-gold-500 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors"
+          >
+            <ExternalLink class="w-3.5 h-3.5" />
+            <span>Visit Store</span>
+          </a>
+        </div>
+      </div>
+
       <!-- Live Sidebar Header Preview -->
       <div class="p-5 rounded-2xl bg-cream-50/70 border border-cream-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -636,7 +665,8 @@ import {
   Image as ImageIcon,
   Upload,
   Trash2,
-  Frame
+  Frame,
+  Copy
 } from 'lucide-vue-next'
 import { uploadService } from '@/services/uploadService'
 
@@ -662,7 +692,8 @@ export default {
     ImageIcon,
     Upload,
     Trash2,
-    Frame
+    Frame,
+    Copy
   },
   data() {
     return {
@@ -690,7 +721,15 @@ export default {
     }
   },
   computed: {
+    ...mapGetters(['adminId']),
     ...mapGetters('settings', ['allSettings']),
+    currentAdminId() {
+      return this.adminId || 'jaydeep'
+    },
+    fullStorefrontUrl() {
+      const origin = typeof window !== 'undefined' ? window.location.origin : 'https://framevue.onrender.com'
+      return `${origin}/s/${this.currentAdminId}`
+    },
     previewBrandName() {
       const raw = this.form.brandName || 'AtelierAdmin'
       if (raw.toLowerCase().includes('admin')) {
@@ -767,6 +806,16 @@ export default {
     removeLogo() {
       this.form.logoUrl = ''
       this.$toast?.info('Custom logo removed. Default studio icon restored.', 'Logo Reset')
+    },
+
+    copyStoreUrl() {
+      const url = this.fullStorefrontUrl
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(url)
+        this.$toast?.success(`Copied store link: ${url}`, 'Storefront Link Copied')
+      } else {
+        this.$toast?.info(`Storefront URL: ${url}`, 'Storefront Link')
+      }
     },
 
     async handleSaveSettings() {

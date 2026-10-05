@@ -159,18 +159,22 @@ const verifyOtp = async (req, res, next) => {
     await admin.save()
 
     // Sign JWT Token
+    const adminId = (admin.adminId || 'jaydeep').toLowerCase().trim()
+    const studioName = admin.studioName || 'Atelier Cadre'
     const token = jwt.sign(
       {
         id: admin._id,
         email: admin.email,
         name: admin.name,
-        role: admin.role
+        role: admin.role,
+        adminId,
+        studioName
       },
       JWT_SECRET,
       { expiresIn: JWT_EXPIRES_IN }
     )
 
-    console.log(`🎉 [AUTH:SUCCESS] Admin verified & authenticated via 2FA: ${admin.email} (Role: ${admin.role})`)
+    console.log(`🎉 [AUTH:SUCCESS] Admin verified & authenticated via 2FA: ${admin.email} (Studio: @${adminId})`)
     console.log(`------------------------------------------------------\n`)
 
     res.json({
@@ -182,6 +186,8 @@ const verifyOtp = async (req, res, next) => {
         name: admin.name,
         email: admin.email,
         role: admin.role,
+        adminId,
+        studioName,
         isVerified: admin.isVerified,
         lastLogin: admin.lastLogin
       }
@@ -198,7 +204,7 @@ const verifyOtp = async (req, res, next) => {
  */
 const signup = async (req, res, next) => {
   try {
-    const { name, email, password, confirmPassword, adminSecret } = req.body
+    const { name, email, password, confirmPassword, adminSecret, studioName, adminId } = req.body
 
     console.log(`\n------------------------------------------------------`)
     console.log(`📝 [AUTH:SIGNUP] Registration request received for: ${email} (${name})`)
@@ -241,6 +247,38 @@ const signup = async (req, res, next) => {
       })
     }
 
+    // Slugify and validate adminId (Store Handle)
+    const slugify = (text) => {
+      return String(text || '')
+        .toLowerCase()
+        .trim()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/[\s_-]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+    }
+
+    let resolvedAdminId = adminId ? slugify(adminId) : slugify(studioName || name)
+    if (!resolvedAdminId || resolvedAdminId.length < 3) {
+      resolvedAdminId = `studio-${Date.now().toString().slice(-6)}`
+    }
+
+    if (!/^[a-z0-9_-]+$/.test(resolvedAdminId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Storefront Handle (adminId) may only contain lowercase letters, numbers, hyphens, and underscores.'
+      })
+    }
+
+    const existingWithAdminId = await Admin.findOne({ adminId: resolvedAdminId })
+    if (existingWithAdminId && existingWithAdminId.email !== normalizedEmail) {
+      return res.status(400).json({
+        success: false,
+        message: `The storefront handle '${resolvedAdminId}' is already taken. Please choose another unique studio handle.`
+      })
+    }
+
+    const resolvedStudioName = (studioName || `${name.trim()}'s Framing Studio`).trim()
+
     // 2. Security Key Verification (Production Safeguard)
     const requiredSecret = process.env.ADMIN_REGISTRATION_SECRET
     if (requiredSecret) {
@@ -269,12 +307,16 @@ const signup = async (req, res, next) => {
       // Existing unverified account: update credentials and resend activation OTP
       admin.name = name.trim()
       admin.password = password
+      admin.studioName = resolvedStudioName
+      admin.adminId = resolvedAdminId
     } else {
       admin = new Admin({
         name: name.trim(),
         email: normalizedEmail,
         password,
         role: 'admin',
+        studioName: resolvedStudioName,
+        adminId: resolvedAdminId,
         isVerified: false
       })
     }
@@ -353,21 +395,36 @@ const verifySignupOtp = async (req, res, next) => {
     admin.otp = null
     admin.otpExpires = null
     admin.lastLogin = new Date()
+    if (!admin.adminId) {
+      admin.adminId = `studio-${admin._id.toString().slice(-6)}`
+    }
     await admin.save()
 
+    // Provision starter store catalog & settings for this studio tenant
+    try {
+      const { seedStoreForAdmin } = require('../seed/seedData')
+      await seedStoreForAdmin(admin.adminId, admin.studioName || `${admin.name}'s Framing Studio`)
+    } catch (seedErr) {
+      console.warn(`⚠️ [AUTH:SIGNUP-VERIFY] Seeding warning for ${admin.adminId}:`, seedErr.message)
+    }
+
     // Sign JWT Token
+    const adminId = (admin.adminId || 'jaydeep').toLowerCase().trim()
+    const studioName = admin.studioName || 'Atelier Cadre'
     const token = jwt.sign(
       {
         id: admin._id,
         email: admin.email,
         name: admin.name,
-        role: admin.role
+        role: admin.role,
+        adminId,
+        studioName
       },
       JWT_SECRET,
       { expiresIn: JWT_EXPIRES_IN }
     )
 
-    console.log(`🎉 [AUTH:SIGNUP-VERIFY] Admin successfully activated & verified: ${admin.email}`)
+    console.log(`🎉 [AUTH:SIGNUP-VERIFY] Admin successfully activated & verified: ${admin.email} (Studio: @${adminId})`)
     console.log(`------------------------------------------------------\n`)
 
     res.json({
@@ -379,6 +436,8 @@ const verifySignupOtp = async (req, res, next) => {
         name: admin.name,
         email: admin.email,
         role: admin.role,
+        adminId,
+        studioName,
         isVerified: admin.isVerified,
         lastLogin: admin.lastLogin
       }
@@ -467,7 +526,46 @@ const getMe = async (req, res, next) => {
 
     res.json({
       success: true,
-      admin
+      admin: {
+        id: admin._id,
+        name: admin.name,
+        email: admin.email,
+        role: admin.role,
+        adminId: (admin.adminId || 'jaydeep').toLowerCase().trim(),
+        studioName: admin.studioName || 'Atelier Cadre',
+        plan: admin.plan || 'pro',
+        isVerified: admin.isVerified,
+        lastLogin: admin.lastLogin,
+        createdAt: admin.createdAt
+      }
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
+/**
+ * Public store lookup by adminId/handle
+ * GET /api/auth/store/:adminId
+ */
+const getAdminByAdminId = async (req, res, next) => {
+  try {
+    const adminId = (req.params.adminId || '').toLowerCase().trim()
+    if (!adminId) {
+      return res.status(400).json({ success: false, message: 'adminId is required' })
+    }
+
+    const admin = await Admin.findOne({ adminId }).select('adminId name studioName isVerified createdAt')
+    if (!admin) {
+      return res.status(404).json({
+        success: false,
+        message: `Studio storefront '@${adminId}' was not found.`
+      })
+    }
+
+    res.json({
+      success: true,
+      store: admin
     })
   } catch (error) {
     next(error)
@@ -480,5 +578,6 @@ module.exports = {
   signup,
   verifySignupOtp,
   resendOtp,
-  getMe
+  getMe,
+  getAdminByAdminId
 }

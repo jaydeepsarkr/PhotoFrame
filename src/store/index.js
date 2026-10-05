@@ -34,7 +34,8 @@ applyDarkModeToDOM(initialDark)
 
 export default createStore({
   state: {
-    darkMode: initialDark
+    darkMode: initialDark,
+    activeAdminId: (typeof localStorage !== 'undefined' && localStorage.getItem('framevue_active_admin_id')) || 'jaydeep'
   },
   mutations: {
     SET_DARK_MODE(state, isDark) {
@@ -42,6 +43,14 @@ export default createStore({
       applyDarkModeToDOM(state.darkMode)
       try {
         localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(state.darkMode))
+      } catch (e) {
+        // ignore
+      }
+    },
+    SET_ACTIVE_ADMIN_ID(state, adminId) {
+      state.activeAdminId = (adminId || 'jaydeep').toLowerCase().trim()
+      try {
+        localStorage.setItem('framevue_active_admin_id', state.activeAdminId)
       } catch (e) {
         // ignore
       }
@@ -60,6 +69,7 @@ export default createStore({
   },
   getters: {
     darkMode: (state) => state.darkMode,
+    activeAdminId: (state) => state.activeAdminId,
     allCustomers: (state) => state.customers.customers,
     customerStats: (state, getters) => getters['customers/customerStats'],
     deletedOrdersCount: (state) => state.orders.deletedOrders.length,
@@ -85,6 +95,8 @@ export default createStore({
     adminRole: (state, getters) => getters['auth/adminRole'],
     adminEmail: (state, getters) => getters['auth/adminEmail'],
     adminName: (state, getters) => getters['auth/adminName'],
+    adminId: (state, getters) => getters['auth/adminId'],
+    studioName: (state, getters) => getters['auth/studioName'],
     frames: (state) => state.frames.frames,
     designs: (state) => state.designs.designs,
     cart: (state) => state.cart.cart,

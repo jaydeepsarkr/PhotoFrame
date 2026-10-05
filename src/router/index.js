@@ -30,6 +30,58 @@ import AdminSections from '@/views/admin/Sections.vue'
 import AdminFooter from '@/views/admin/FooterSettings.vue'
 
 const routes = [
+  // Multi-Tenant Storefront (Per-Admin Dedicated URL: /s/:adminId/...)
+  {
+    path: '/s/:adminId',
+    component: CustomerLayout,
+    children: [
+      {
+        path: '',
+        name: 'StoreHome',
+        component: Home
+      },
+      {
+        path: 'frames',
+        name: 'StoreFrames',
+        component: Frames
+      },
+      {
+        path: 'frames/:id',
+        name: 'StoreFrameDetails',
+        component: FrameDetails
+      },
+      {
+        path: 'customize',
+        redirect: (to) => `/s/${to.params.adminId}/customize/1`
+      },
+      {
+        path: 'customize/:id',
+        name: 'StoreCustomize',
+        component: Customize
+      },
+      {
+        path: 'cart',
+        name: 'StoreCart',
+        component: Cart
+      },
+      {
+        path: 'checkout',
+        name: 'StoreCheckout',
+        component: Checkout
+      },
+      {
+        path: 'order-review',
+        name: 'StoreOrderReview',
+        component: OrderReview
+      },
+      {
+        path: 'order-success/:id',
+        name: 'StoreOrderSuccess',
+        component: OrderSuccess
+      }
+    ]
+  },
+  // Default / Root Storefront (Fallback to flagship admin)
   {
     path: '/',
     component: CustomerLayout,
@@ -171,8 +223,20 @@ const router = createRouter({
   }
 })
 
-// Navigation Guard: Protect /admin routes with JWT authentication
+// Navigation Guard: Protect /admin routes with JWT authentication & sync active tenant
 router.beforeEach((to, from, next) => {
+  // Sync active tenant for /s/:adminId
+  if (to.params && to.params.adminId) {
+    const adminId = to.params.adminId.toLowerCase().trim()
+    localStorage.setItem('framevue_active_admin_id', adminId)
+    if (store.state.activeAdminId !== adminId) {
+      store.commit('SET_ACTIVE_ADMIN_ID', adminId)
+      store.dispatch('settings/fetchSettings')
+      store.dispatch('frames/fetchFrames')
+      store.dispatch('designs/fetchDesigns')
+    }
+  }
+
   const token =
     store.getters['auth/isAuthenticated'] ||
     (typeof localStorage !== 'undefined' && localStorage.getItem('framevue_admin_token'))

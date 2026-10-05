@@ -1,10 +1,12 @@
 const Frame = require('../models/Frame')
 const { uploadBufferToCloudinary } = require('../config/cloudinary')
+const { DEFAULT_ADMIN_ID } = require('../middleware/tenant')
 
 // Fallback seed data in case database is freshly booting
 const defaultFrames = [
   {
     id: 1,
+    adminId: 'jaydeep',
     name: 'Classic Wooden Frame',
     description: 'Hand-finished solid walnut wood frame with a warm satin grain and museum-grade archival matboard.',
     material: 'Wood',
@@ -21,31 +23,33 @@ const defaultFrames = [
   }
 ]
 
-function buildFrameQuery(id) {
+function buildFrameQuery(id, adminId) {
   const orConditions = []
   if (!isNaN(id)) {
-    orConditions.push({ id: Number(id) })
+    orConditions.push({ id: Number(id), adminId })
   }
   if (typeof id === 'string' && id.match(/^[0-9a-fA-F]{24}$/)) {
-    orConditions.push({ _id: id })
+    orConditions.push({ _id: id, adminId })
   }
-  orConditions.push({ id: id })
+  orConditions.push({ id: id, adminId })
   return { $or: orConditions }
 }
 
-function buildBulkQuery(ids) {
+function buildBulkQuery(ids, adminId) {
   const numIds = ids.map(x => isNaN(x) ? null : Number(x)).filter(x => x !== null)
   const hexIds = ids.filter(x => typeof x === 'string' && x.match(/^[0-9a-fA-F]{24}$/))
   const orConditions = []
-  if (numIds.length > 0) orConditions.push({ id: { $in: numIds } })
-  if (hexIds.length > 0) orConditions.push({ _id: { $in: hexIds } })
-  orConditions.push({ id: { $in: ids } })
+  if (numIds.length > 0) orConditions.push({ id: { $in: numIds }, adminId })
+  if (hexIds.length > 0) orConditions.push({ _id: { $in: hexIds }, adminId })
+  orConditions.push({ id: { $in: ids }, adminId })
   return { $or: orConditions }
 }
 
 exports.getFrames = async (req, res, next) => {
   try {
     const mongoose = require('mongoose')
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
+
     if (mongoose.connection.readyState !== 1) {
       return res.json({
         success: true,
@@ -56,7 +60,7 @@ exports.getFrames = async (req, res, next) => {
     }
 
     const { material, style, status, sort } = req.query
-    const query = { isDeleted: { $ne: true } }
+    const query = { adminId, isDeleted: { $ne: true } }
 
     if (material && material !== 'All') query.material = material
     if (style && style !== 'All') query.style = style
@@ -75,7 +79,6 @@ exports.getFrames = async (req, res, next) => {
       data: frames
     })
   } catch (error) {
-    // If DB is offline, return fallback
     res.json({
       success: true,
       count: defaultFrames.length,
@@ -87,11 +90,12 @@ exports.getFrames = async (req, res, next) => {
 
 /**
  * GET /api/frames/deleted
- * Returns recently deleted frames (Trash Bin)
+ * Returns recently deleted frames (Trash Bin) — admin only
  */
 exports.getDeletedFrames = async (req, res, next) => {
   try {
-    const frames = await Frame.find({ isDeleted: true }).sort({ deletedAt: -1, updatedAt: -1 })
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
+    const frames = await Frame.find({ adminId, isDeleted: true }).sort({ deletedAt: -1, updatedAt: -1 })
     res.json({
       success: true,
       count: frames.length,
@@ -105,7 +109,8 @@ exports.getDeletedFrames = async (req, res, next) => {
 exports.getFrameById = async (req, res, next) => {
   try {
     const { id } = req.params
-    const query = buildFrameQuery(id)
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
+    const query = buildFrameQuery(id, adminId)
     const frame = await Frame.findOne(query)
 
     if (!frame) {
@@ -120,12 +125,12 @@ exports.getFrameById = async (req, res, next) => {
 
 exports.createFrame = async (req, res, next) => {
   try {
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
     let imageUrl = req.body.image
 
-    // If an image file was attached via multipart/form-data
     if (req.file) {
       const uploadResult = await uploadBufferToCloudinary(req.file.buffer, {
-        folder: 'framevue/frames',
+        folder: `framevue/${adminId}/frames`,
         mimetype: req.file.mimetype
       })
       imageUrl = uploadResult.secure_url || uploadResult.url
@@ -133,6 +138,7 @@ exports.createFrame = async (req, res, next) => {
 
     const frameData = {
       ...req.body,
+      adminId,
       id: req.body.id ? Number(req.body.id) : Date.now(),
       price: Number(req.body.price),
       discountPrice: req.body.discountPrice ? Number(req.body.discountPrice) : null,
@@ -158,24 +164,26 @@ exports.createFrame = async (req, res, next) => {
 exports.updateFrame = async (req, res, next) => {
   try {
     const { id } = req.params
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
     let imageUrl = req.body.image
 
     if (req.file) {
       const uploadResult = await uploadBufferToCloudinary(req.file.buffer, {
-        folder: 'framevue/frames',
+        folder: `framevue/${adminId}/frames`,
         mimetype: req.file.mimetype
       })
       imageUrl = uploadResult.secure_url || uploadResult.url
     }
 
     const updateData = { ...req.body }
+    delete updateData.adminId // Cannot change adminId via update
     if (imageUrl) updateData.image = imageUrl
     if (updateData.price) updateData.price = Number(updateData.price)
     if (updateData.discountPrice !== undefined) {
       updateData.discountPrice = updateData.discountPrice ? Number(updateData.discountPrice) : null
     }
 
-    const query = buildFrameQuery(id)
+    const query = buildFrameQuery(id, adminId)
     const frame = await Frame.findOneAndUpdate(query, updateData, { new: true, runValidators: true })
 
     if (!frame) {
@@ -194,7 +202,8 @@ exports.updateFrame = async (req, res, next) => {
 exports.deleteFrame = async (req, res, next) => {
   try {
     const { id } = req.params
-    const query = buildFrameQuery(id)
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
+    const query = buildFrameQuery(id, adminId)
     const frame = await Frame.findOneAndUpdate(
       query,
       { $set: { isDeleted: true, deletedAt: new Date() } },
@@ -221,7 +230,8 @@ exports.deleteFrame = async (req, res, next) => {
 exports.restoreFrame = async (req, res, next) => {
   try {
     const { id } = req.params
-    const query = buildFrameQuery(id)
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
+    const query = buildFrameQuery(id, adminId)
     const frame = await Frame.findOneAndUpdate(
       query,
       { $set: { isDeleted: false, deletedAt: null } },
@@ -248,7 +258,8 @@ exports.restoreFrame = async (req, res, next) => {
 exports.permanentDeleteFrame = async (req, res, next) => {
   try {
     const { id } = req.params
-    const query = buildFrameQuery(id)
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
+    const query = buildFrameQuery(id, adminId)
     const frame = await Frame.findOneAndDelete(query)
 
     if (!frame) {
@@ -271,11 +282,12 @@ exports.permanentDeleteFrame = async (req, res, next) => {
 exports.bulkDeleteFrames = async (req, res, next) => {
   try {
     const { ids } = req.body
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
     if (!Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ success: false, message: 'Please provide an array of frame IDs.' })
     }
 
-    const query = buildBulkQuery(ids)
+    const query = buildBulkQuery(ids, adminId)
     const result = await Frame.updateMany(
       query,
       { $set: { isDeleted: true, deletedAt: new Date() } }
@@ -297,11 +309,12 @@ exports.bulkDeleteFrames = async (req, res, next) => {
 exports.bulkRestoreFrames = async (req, res, next) => {
   try {
     const { ids } = req.body
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
     if (!Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ success: false, message: 'Please provide an array of frame IDs.' })
     }
 
-    const query = buildBulkQuery(ids)
+    const query = buildBulkQuery(ids, adminId)
     const result = await Frame.updateMany(
       query,
       { $set: { isDeleted: false, deletedAt: null } }
@@ -323,11 +336,12 @@ exports.bulkRestoreFrames = async (req, res, next) => {
 exports.bulkPermanentDeleteFrames = async (req, res, next) => {
   try {
     const { ids } = req.body
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
     if (!Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ success: false, message: 'Please provide an array of frame IDs.' })
     }
 
-    const query = buildBulkQuery(ids)
+    const query = buildBulkQuery(ids, adminId)
     const result = await Frame.deleteMany(query)
 
     res.json({

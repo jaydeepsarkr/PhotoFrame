@@ -4,6 +4,8 @@ const Frame = require('../models/Frame')
 const Design = require('../models/Design')
 const Order = require('../models/Order')
 const Admin = require('../models/Admin')
+const Setting = require('../models/Setting')
+const Customer = require('../models/Customer')
 
 // 12 Initial Frames
 const initialFrames = [
@@ -473,29 +475,56 @@ const initialOrders = [
   }
 ]
 
+/**
+ * Seed or provision starter catalog & settings for a new admin/studio
+ */
+const seedStoreForAdmin = async (adminId, studioName = 'Atelier Cadre') => {
+  const normAdminId = (adminId || 'jaydeep').toLowerCase().trim()
+
+  // 1. Settings
+  let setting = await Setting.findOne({ adminId: normAdminId })
+  if (!setting) {
+    await Setting.create({
+      adminId: normAdminId,
+      key: 'global_studio_settings',
+      brandName: studioName,
+      brandSubtitle: 'Custom Framing Studio',
+      logoUrl: '',
+      adminNotificationEmail: process.env.ADMIN_EMAIL || 'jaydeepsarkr@gmail.com'
+    })
+    console.log(` Created default settings for adminId: ${normAdminId}`)
+  }
+
+  // 2. Starter Frames (if this tenant has 0 frames)
+  const frameCount = await Frame.countDocuments({ adminId: normAdminId })
+  if (frameCount === 0) {
+    const framesToInsert = initialFrames.map((f) => ({
+      ...f,
+      adminId: normAdminId
+    }))
+    await Frame.insertMany(framesToInsert)
+    console.log(` Seeded ${framesToInsert.length} Frames for studio [${normAdminId}]`)
+  }
+
+  // 3. Starter Designs (if this tenant has 0 designs)
+  const designCount = await Design.countDocuments({ adminId: normAdminId })
+  if (designCount === 0) {
+    const designsToInsert = initialDesigns.map((d) => ({
+      ...d,
+      adminId: normAdminId
+    }))
+    await Design.insertMany(designsToInsert)
+    console.log(` Seeded ${designsToInsert.length} Designs for studio [${normAdminId}]`)
+  }
+}
+
 const seedDatabase = async () => {
   try {
-    const frameCount = await Frame.countDocuments()
-    if (frameCount === 0) {
-      await Frame.insertMany(initialFrames)
-      console.log(` Seeded ${initialFrames.length} Frames into MongoDB`)
-    }
-
-    const designCount = await Design.countDocuments()
-    if (designCount === 0) {
-      await Design.insertMany(initialDesigns)
-      console.log(` Seeded ${initialDesigns.length} Designs into MongoDB`)
-    }
-
-    const orderCount = await Order.countDocuments()
-    if (orderCount === 0) {
-      await Order.insertMany(initialOrders)
-      console.log(` Seeded ${initialOrders.length} Orders into MongoDB`)
-    }
-
     const defaultEmail = (process.env.ADMIN_EMAIL || 'jaydeepsarkr@gmail.com').toLowerCase().trim()
     const defaultPassword = process.env.ADMIN_PASSWORD || 'Admin@12345'
+    const defaultAdminId = 'jaydeep'
 
+    // 1. Ensure default Admin exists with adminId: 'jaydeep'
     let defaultAdmin = await Admin.findOne({ email: defaultEmail })
     if (!defaultAdmin) {
       defaultAdmin = new Admin({
@@ -503,17 +532,57 @@ const seedDatabase = async () => {
         email: defaultEmail,
         password: defaultPassword,
         role: 'superadmin',
+        adminId: defaultAdminId,
+        studioName: 'Atelier Cadre',
         isVerified: true
       })
       await defaultAdmin.save()
-      console.log(` Seeded default Super Admin account (${defaultEmail}) into MongoDB`)
+      console.log(` Seeded default Super Admin account (${defaultEmail}, adminId: ${defaultAdminId})`)
     } else {
       defaultAdmin.isVerified = true
+      if (!defaultAdmin.adminId) {
+        defaultAdmin.adminId = defaultAdminId
+        defaultAdmin.studioName = defaultAdmin.studioName || 'Atelier Cadre'
+      }
       await defaultAdmin.save()
     }
 
-    // Ensure all existing admin accounts are marked verified
-    await Admin.updateMany({ isVerified: { $ne: true } }, { isVerified: true })
+    // 2. Multi-tenant database migration for existing records missing adminId
+    await Admin.updateMany(
+      { adminId: { $exists: false } },
+      { $set: { adminId: defaultAdminId, studioName: 'Atelier Cadre' } }
+    )
+    await Frame.updateMany(
+      { adminId: { $exists: false } },
+      { $set: { adminId: defaultAdminId } }
+    )
+    await Design.updateMany(
+      { adminId: { $exists: false } },
+      { $set: { adminId: defaultAdminId } }
+    )
+    await Order.updateMany(
+      { adminId: { $exists: false } },
+      { $set: { adminId: defaultAdminId } }
+    )
+    await Customer.updateMany(
+      { adminId: { $exists: false } },
+      { $set: { adminId: defaultAdminId } }
+    )
+    await Setting.updateMany(
+      { adminId: { $exists: false } },
+      { $set: { adminId: defaultAdminId } }
+    )
+
+    // 3. Ensure default catalog & settings are seeded for 'jaydeep'
+    await seedStoreForAdmin(defaultAdminId, 'Atelier Cadre')
+
+    // 4. Initial orders if empty
+    const orderCount = await Order.countDocuments({ adminId: defaultAdminId })
+    if (orderCount === 0) {
+      const ordersToInsert = initialOrders.map((o) => ({ ...o, adminId: defaultAdminId }))
+      await Order.insertMany(ordersToInsert)
+      console.log(` Seeded ${ordersToInsert.length} Orders into MongoDB`)
+    }
 
     return true
   } catch (error) {
@@ -539,6 +608,7 @@ if (require.main === module) {
 
 module.exports = {
   seedDatabase,
+  seedStoreForAdmin,
   initialFrames,
   initialDesigns,
   initialOrders

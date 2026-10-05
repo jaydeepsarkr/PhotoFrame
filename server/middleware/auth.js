@@ -33,8 +33,12 @@ const authMiddleware = async (req, res, next) => {
       id: admin._id,
       name: admin.name,
       email: admin.email,
-      role: admin.role
+      role: admin.role,
+      adminId: (admin.adminId || 'jaydeep').toLowerCase().trim(),
+      studioName: admin.studioName || 'Atelier Cadre',
+      plan: admin.plan || 'pro'
     }
+    req.adminId = req.admin.adminId
 
     next()
   } catch (error) {

@@ -2,9 +2,16 @@ const mongoose = require('mongoose')
 
 const designSchema = new mongoose.Schema(
   {
+    adminId: {
+      type: String,
+      required: true,
+      default: 'jaydeep',
+      lowercase: true,
+      trim: true,
+      index: true
+    },
     id: {
       type: Number,
-      unique: true,
       index: true
     },
     name: {
@@ -77,6 +84,10 @@ designSchema.pre('save', function (next) {
   }
   next()
 })
+
+// Compound indexes for tenant isolation
+designSchema.index({ adminId: 1, id: 1 })
+designSchema.index({ adminId: 1, isDeleted: 1, status: 1 })
 
 const Design = mongoose.model('Design', designSchema)
 module.exports = Design

@@ -25,6 +25,24 @@ const adminSchema = new mongoose.Schema(
       enum: ['admin', 'superadmin'],
       default: 'admin'
     },
+    adminId: {
+      type: String,
+      unique: true,
+      sparse: true,
+      lowercase: true,
+      trim: true,
+      index: true
+    },
+    studioName: {
+      type: String,
+      trim: true,
+      default: 'Atelier Cadre'
+    },
+    plan: {
+      type: String,
+      enum: ['starter', 'pro', 'enterprise'],
+      default: 'pro'
+    },
     otp: {
       type: String,
       default: null

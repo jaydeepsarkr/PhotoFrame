@@ -1,8 +1,9 @@
 const Customer = require('../models/Customer')
 const Order = require('../models/Order')
 const { sendMarketingEmail } = require('../config/mailersend')
+const { DEFAULT_ADMIN_ID } = require('../middleware/tenant')
 
-// Fallback sample customer directory for studio testing if database has no orders yet
+// Fallback sample customer directory for studio testing
 const SAMPLE_CUSTOMERS = [
   {
     id: 'cust-1',
@@ -46,14 +47,14 @@ const SAMPLE_CUSTOMERS = [
 ]
 
 /**
- * Synchronize orders and sample records into Customer collection
+ * Synchronize orders and sample records into Customer collection — scoped per adminId
  */
-async function syncCustomersFromOrders() {
+async function syncCustomersFromOrders(adminId) {
   try {
     const mongoose = require('mongoose')
     if (mongoose.connection.readyState !== 1) return
 
-    const orders = await Order.find({ isDeleted: { $ne: true } })
+    const orders = await Order.find({ adminId, isDeleted: { $ne: true } })
     const customerMap = new Map()
 
     for (const order of orders) {
@@ -63,6 +64,7 @@ async function syncCustomersFromOrders() {
       if (!customerMap.has(email)) {
         customerMap.set(email, {
           id: `cust-${email.replace(/[^a-zA-Z0-9]/g, '_')}`,
+          adminId,
           fullName: order.customer?.fullName || 'Valued Patron',
           email,
           phone: order.customer?.phone || '',
@@ -85,17 +87,19 @@ async function syncCustomersFromOrders() {
       }
     }
 
-    // Include sample customers if not in map
-    for (const sample of SAMPLE_CUSTOMERS) {
-      const semail = sample.email.toLowerCase()
-      if (!customerMap.has(semail)) {
-        customerMap.set(semail, { ...sample, email: semail })
+    // Include sample customers (only for default admin) if not in map
+    if (adminId === DEFAULT_ADMIN_ID) {
+      for (const sample of SAMPLE_CUSTOMERS) {
+        const semail = sample.email.toLowerCase()
+        if (!customerMap.has(semail)) {
+          customerMap.set(semail, { ...sample, adminId, email: semail })
+        }
       }
     }
 
-    // Upsert into MongoDB without resetting isDeleted if already deleted
+    // Upsert into MongoDB scoped per adminId
     for (const cData of customerMap.values()) {
-      const existing = await Customer.findOne({ email: cData.email })
+      const existing = await Customer.findOne({ adminId, email: cData.email })
       if (!existing) {
         await Customer.create({
           ...cData,
@@ -128,12 +132,14 @@ async function syncCustomersFromOrders() {
 }
 
 /**
- * Get active customer directory
+ * Get active customer directory — scoped per adminId
  * GET /api/customers
  */
 exports.getCustomers = async (req, res, next) => {
   try {
     const mongoose = require('mongoose')
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
+
     if (mongoose.connection.readyState !== 1) {
       return res.json({
         success: true,
@@ -143,9 +149,9 @@ exports.getCustomers = async (req, res, next) => {
       })
     }
 
-    await syncCustomersFromOrders()
+    await syncCustomersFromOrders(adminId)
 
-    const customers = await Customer.find({ isDeleted: { $ne: true } }).sort({ lastOrderDate: -1, updatedAt: -1 })
+    const customers = await Customer.find({ adminId, isDeleted: { $ne: true } }).sort({ lastOrderDate: -1, updatedAt: -1 })
 
     res.json({
       success: true,
@@ -163,7 +169,8 @@ exports.getCustomers = async (req, res, next) => {
  */
 exports.getDeletedCustomers = async (req, res, next) => {
   try {
-    const customers = await Customer.find({ isDeleted: true }).sort({ deletedAt: -1, updatedAt: -1 })
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
+    const customers = await Customer.find({ adminId, isDeleted: true }).sort({ deletedAt: -1, updatedAt: -1 })
     res.json({
       success: true,
       count: customers.length,
@@ -181,8 +188,9 @@ exports.getDeletedCustomers = async (req, res, next) => {
 exports.deleteCustomer = async (req, res, next) => {
   try {
     const { id } = req.params
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
     const customer = await Customer.findOneAndUpdate(
-      { $or: [{ id }, { _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null }] },
+      { $or: [{ id, adminId }, { _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null, adminId }] },
       { $set: { isDeleted: true, deletedAt: new Date() } },
       { new: true }
     )
@@ -208,8 +216,9 @@ exports.deleteCustomer = async (req, res, next) => {
 exports.restoreCustomer = async (req, res, next) => {
   try {
     const { id } = req.params
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
     const customer = await Customer.findOneAndUpdate(
-      { $or: [{ id }, { _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null }] },
+      { $or: [{ id, adminId }, { _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null, adminId }] },
       { $set: { isDeleted: false, deletedAt: null } },
       { new: true }
     )
@@ -235,8 +244,9 @@ exports.restoreCustomer = async (req, res, next) => {
 exports.permanentDeleteCustomer = async (req, res, next) => {
   try {
     const { id } = req.params
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
     const customer = await Customer.findOneAndDelete({
-      $or: [{ id }, { _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null }]
+      $or: [{ id, adminId }, { _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null, adminId }]
     })
 
     if (!customer) {
@@ -260,12 +270,13 @@ exports.permanentDeleteCustomer = async (req, res, next) => {
 exports.bulkDeleteCustomers = async (req, res, next) => {
   try {
     const { ids } = req.body
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
     if (!Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ success: false, message: 'Please provide an array of customer IDs.' })
     }
 
     const result = await Customer.updateMany(
-      { id: { $in: ids } },
+      { id: { $in: ids }, adminId },
       { $set: { isDeleted: true, deletedAt: new Date() } }
     )
 
@@ -286,12 +297,13 @@ exports.bulkDeleteCustomers = async (req, res, next) => {
 exports.bulkRestoreCustomers = async (req, res, next) => {
   try {
     const { ids } = req.body
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
     if (!Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ success: false, message: 'Please provide an array of customer IDs.' })
     }
 
     const result = await Customer.updateMany(
-      { id: { $in: ids } },
+      { id: { $in: ids }, adminId },
       { $set: { isDeleted: false, deletedAt: null } }
     )
 
@@ -312,11 +324,12 @@ exports.bulkRestoreCustomers = async (req, res, next) => {
 exports.bulkPermanentDeleteCustomers = async (req, res, next) => {
   try {
     const { ids } = req.body
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
     if (!Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ success: false, message: 'Please provide an array of customer IDs.' })
     }
 
-    const result = await Customer.deleteMany({ id: { $in: ids } })
+    const result = await Customer.deleteMany({ id: { $in: ids }, adminId })
 
     res.json({
       success: true,
@@ -334,8 +347,9 @@ exports.bulkPermanentDeleteCustomers = async (req, res, next) => {
  */
 exports.sendCustomerEmail = async (req, res, next) => {
   try {
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
     const {
-      target, // 'single' | 'all'
+      target,
       recipientEmail,
       recipientName,
       subject,
@@ -349,10 +363,8 @@ exports.sendCustomerEmail = async (req, res, next) => {
 
     console.log(`\n======================================================`)
     console.log(`📢 [CUSTOMER:EMAIL:DISPATCH] Received email dispatch request`)
-    console.log(`   Target: ${target}`)
+    console.log(`   Target: ${target}, Studio: ${adminId}`)
     console.log(`   Subject: ${subject}`)
-    console.log(`   Badge: ${offerBadge || 'N/A'}`)
-    console.log(`   Discount Code: ${discountCode || 'None'}`)
     console.log(`======================================================`)
 
     if (!subject || !messageBody) {
@@ -362,7 +374,6 @@ exports.sendCustomerEmail = async (req, res, next) => {
       })
     }
 
-    // 1. Single Customer Dispatch
     if (target === 'single') {
       if (!recipientEmail) {
         return res.status(400).json({
@@ -374,16 +385,11 @@ exports.sendCustomerEmail = async (req, res, next) => {
       const emailResult = await sendMarketingEmail({
         toEmail: recipientEmail.trim(),
         customerName: recipientName || 'Valued Customer',
-        subject,
-        headline,
-        offerBadge: offerBadge || 'Special Offer',
-        discountCode,
-        messageBody,
+        subject, headline, offerBadge: offerBadge || 'Special Offer',
+        discountCode, messageBody,
         buttonText: buttonText || 'Shop Bespoke Frames',
         buttonLink
       })
-
-      console.log(`✅ [CUSTOMER:EMAIL:SINGLE] Dispatch completed for ${recipientEmail}: ${emailResult.success ? 'Delivered' : 'Simulated / SMTP Result'}`)
 
       return res.json({
         success: true,
@@ -395,10 +401,8 @@ exports.sendCustomerEmail = async (req, res, next) => {
       })
     }
 
-    // 2. Broadcast to ALL Customers
     if (target === 'all') {
-      // Fetch active customers
-      const activeCustomers = await Customer.find({ isDeleted: { $ne: true } })
+      const activeCustomers = await Customer.find({ adminId, isDeleted: { $ne: true } })
       const emailsSet = new Map()
 
       for (const c of activeCustomers) {
@@ -407,17 +411,7 @@ exports.sendCustomerEmail = async (req, res, next) => {
         }
       }
 
-      // Add sample customers if empty
-      if (emailsSet.size === 0) {
-        for (const sample of SAMPLE_CUSTOMERS) {
-          emailsSet.set(sample.email.toLowerCase(), sample.fullName)
-        }
-      }
-
       const recipientsList = Array.from(emailsSet.entries())
-
-      console.log(`📢 [CUSTOMER:EMAIL:BROADCAST] Starting mass dispatch to ${recipientsList.length} customers...`)
-
       const results = []
       let sentCount = 0
       let failCount = 0
@@ -425,13 +419,9 @@ exports.sendCustomerEmail = async (req, res, next) => {
       for (const [email, name] of recipientsList) {
         try {
           const resSingle = await sendMarketingEmail({
-            toEmail: email,
-            customerName: name,
-            subject,
-            headline,
-            offerBadge: offerBadge || 'Studio Announcement',
-            discountCode,
-            messageBody,
+            toEmail: email, customerName: name,
+            subject, headline, offerBadge: offerBadge || 'Studio Announcement',
+            discountCode, messageBody,
             buttonText: buttonText || 'Explore Handcrafted Frames',
             buttonLink
           })
@@ -444,8 +434,6 @@ exports.sendCustomerEmail = async (req, res, next) => {
           failCount++
         }
       }
-
-      console.log(`🎉 [CUSTOMER:EMAIL:BROADCAST] Completed: ${sentCount} sent, ${failCount} failed/simulated out of ${recipientsList.length} total.`)
 
       return res.json({
         success: true,

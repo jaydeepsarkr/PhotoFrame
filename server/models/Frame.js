@@ -2,9 +2,16 @@ const mongoose = require('mongoose')
 
 const frameSchema = new mongoose.Schema(
   {
+    adminId: {
+      type: String,
+      required: true,
+      default: 'jaydeep',
+      lowercase: true,
+      trim: true,
+      index: true
+    },
     id: {
       type: Number,
-      unique: true,
       index: true
     },
     name: {
@@ -89,6 +96,10 @@ frameSchema.pre('save', function (next) {
   }
   next()
 })
+
+// Compound indexes for tenant isolation
+frameSchema.index({ adminId: 1, id: 1 })
+frameSchema.index({ adminId: 1, isDeleted: 1, status: 1 })
 
 const Frame = mongoose.model('Frame', frameSchema)
 module.exports = Frame

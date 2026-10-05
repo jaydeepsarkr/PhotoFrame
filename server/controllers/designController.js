@@ -1,32 +1,34 @@
 const Design = require('../models/Design')
 const { uploadBufferToCloudinary } = require('../config/cloudinary')
+const { DEFAULT_ADMIN_ID } = require('../middleware/tenant')
 
-function buildDesignQuery(id) {
+function buildDesignQuery(id, adminId) {
   const orConditions = []
   if (!isNaN(id)) {
-    orConditions.push({ id: Number(id) })
+    orConditions.push({ id: Number(id), adminId })
   }
   if (typeof id === 'string' && id.match(/^[0-9a-fA-F]{24}$/)) {
-    orConditions.push({ _id: id })
+    orConditions.push({ _id: id, adminId })
   }
-  orConditions.push({ id: id })
+  orConditions.push({ id: id, adminId })
   return { $or: orConditions }
 }
 
-function buildBulkQuery(ids) {
+function buildBulkQuery(ids, adminId) {
   const numIds = ids.map(x => isNaN(x) ? null : Number(x)).filter(x => x !== null)
   const hexIds = ids.filter(x => typeof x === 'string' && x.match(/^[0-9a-fA-F]{24}$/))
   const orConditions = []
-  if (numIds.length > 0) orConditions.push({ id: { $in: numIds } })
-  if (hexIds.length > 0) orConditions.push({ _id: { $in: hexIds } })
-  orConditions.push({ id: { $in: ids } })
+  if (numIds.length > 0) orConditions.push({ id: { $in: numIds }, adminId })
+  if (hexIds.length > 0) orConditions.push({ _id: { $in: hexIds }, adminId })
+  orConditions.push({ id: { $in: ids }, adminId })
   return { $or: orConditions }
 }
 
 exports.getDesigns = async (req, res, next) => {
   try {
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
     const { category, status } = req.query
-    const query = { isDeleted: { $ne: true } }
+    const query = { adminId, isDeleted: { $ne: true } }
 
     if (category && category !== 'All') query.category = category
     if (status && status !== 'All') query.status = status
@@ -48,7 +50,8 @@ exports.getDesigns = async (req, res, next) => {
  */
 exports.getDeletedDesigns = async (req, res, next) => {
   try {
-    const designs = await Design.find({ isDeleted: true }).sort({ deletedAt: -1, updatedAt: -1 })
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
+    const designs = await Design.find({ adminId, isDeleted: true }).sort({ deletedAt: -1, updatedAt: -1 })
     res.json({
       success: true,
       count: designs.length,
@@ -62,7 +65,8 @@ exports.getDeletedDesigns = async (req, res, next) => {
 exports.getDesignById = async (req, res, next) => {
   try {
     const { id } = req.params
-    const query = buildDesignQuery(id)
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
+    const query = buildDesignQuery(id, adminId)
     const design = await Design.findOne(query)
 
     if (!design) {
@@ -77,11 +81,12 @@ exports.getDesignById = async (req, res, next) => {
 
 exports.createDesign = async (req, res, next) => {
   try {
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
     let imageUrl = req.body.image
 
     if (req.file) {
       const uploadResult = await uploadBufferToCloudinary(req.file.buffer, {
-        folder: 'framevue/designs',
+        folder: `framevue/${adminId}/designs`,
         mimetype: req.file.mimetype
       })
       imageUrl = uploadResult.secure_url || uploadResult.url
@@ -89,6 +94,7 @@ exports.createDesign = async (req, res, next) => {
 
     const designData = {
       ...req.body,
+      adminId,
       id: req.body.id ? Number(req.body.id) : Date.now(),
       image: imageUrl || 'https://images.unsplash.com/photo-1518199266791-5375a83190b7?auto=format&fit=crop&w=700&q=80',
       isDeleted: false,
@@ -105,20 +111,22 @@ exports.createDesign = async (req, res, next) => {
 exports.updateDesign = async (req, res, next) => {
   try {
     const { id } = req.params
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
     let imageUrl = req.body.image
 
     if (req.file) {
       const uploadResult = await uploadBufferToCloudinary(req.file.buffer, {
-        folder: 'framevue/designs',
+        folder: `framevue/${adminId}/designs`,
         mimetype: req.file.mimetype
       })
       imageUrl = uploadResult.secure_url || uploadResult.url
     }
 
     const updateData = { ...req.body }
+    delete updateData.adminId
     if (imageUrl) updateData.image = imageUrl
 
-    const query = buildDesignQuery(id)
+    const query = buildDesignQuery(id, adminId)
     const design = await Design.findOneAndUpdate(query, updateData, { new: true, runValidators: true })
 
     if (!design) {
@@ -137,7 +145,8 @@ exports.updateDesign = async (req, res, next) => {
 exports.deleteDesign = async (req, res, next) => {
   try {
     const { id } = req.params
-    const query = buildDesignQuery(id)
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
+    const query = buildDesignQuery(id, adminId)
     const design = await Design.findOneAndUpdate(
       query,
       { $set: { isDeleted: true, deletedAt: new Date() } },
@@ -164,7 +173,8 @@ exports.deleteDesign = async (req, res, next) => {
 exports.restoreDesign = async (req, res, next) => {
   try {
     const { id } = req.params
-    const query = buildDesignQuery(id)
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
+    const query = buildDesignQuery(id, adminId)
     const design = await Design.findOneAndUpdate(
       query,
       { $set: { isDeleted: false, deletedAt: null } },
@@ -191,7 +201,8 @@ exports.restoreDesign = async (req, res, next) => {
 exports.permanentDeleteDesign = async (req, res, next) => {
   try {
     const { id } = req.params
-    const query = buildDesignQuery(id)
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
+    const query = buildDesignQuery(id, adminId)
     const design = await Design.findOneAndDelete(query)
 
     if (!design) {
@@ -214,11 +225,12 @@ exports.permanentDeleteDesign = async (req, res, next) => {
 exports.bulkDeleteDesigns = async (req, res, next) => {
   try {
     const { ids } = req.body
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
     if (!Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ success: false, message: 'Please provide an array of design IDs.' })
     }
 
-    const query = buildBulkQuery(ids)
+    const query = buildBulkQuery(ids, adminId)
     const result = await Design.updateMany(
       query,
       { $set: { isDeleted: true, deletedAt: new Date() } }
@@ -240,11 +252,12 @@ exports.bulkDeleteDesigns = async (req, res, next) => {
 exports.bulkRestoreDesigns = async (req, res, next) => {
   try {
     const { ids } = req.body
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
     if (!Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ success: false, message: 'Please provide an array of design IDs.' })
     }
 
-    const query = buildBulkQuery(ids)
+    const query = buildBulkQuery(ids, adminId)
     const result = await Design.updateMany(
       query,
       { $set: { isDeleted: false, deletedAt: null } }
@@ -266,11 +279,12 @@ exports.bulkRestoreDesigns = async (req, res, next) => {
 exports.bulkPermanentDeleteDesigns = async (req, res, next) => {
   try {
     const { ids } = req.body
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
     if (!Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ success: false, message: 'Please provide an array of design IDs.' })
     }
 
-    const query = buildBulkQuery(ids)
+    const query = buildBulkQuery(ids, adminId)
     const result = await Design.deleteMany(query)
 
     res.json({

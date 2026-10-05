@@ -51,12 +51,25 @@
       </router-link>
 
       <router-link
-        to="/"
-        class="hidden md:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-cream-100 hover:bg-cream-200 text-charcoal-900 border border-cream-300 text-xs font-semibold transition-colors"
+        :to="storefrontPath"
+        target="_blank"
+        class="hidden md:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gold-50 dark:bg-gold-950/40 hover:bg-gold-100 dark:hover:bg-gold-900/60 text-gold-800 dark:text-gold-200 border border-gold-300 dark:border-gold-800 text-xs font-semibold transition-colors"
+        title="View your dedicated storefront in a new tab"
       >
-        <Store class="w-3.5 h-3.5" />
-        <span>Storefront</span>
+        <Store class="w-3.5 h-3.5 text-gold-600" />
+        <span>My Storefront</span>
+        <ExternalLink class="w-3 h-3 opacity-60" />
       </router-link>
+
+      <button
+        type="button"
+        class="hidden lg:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-cream-100 hover:bg-cream-200 text-charcoal-900 border border-cream-300 text-xs font-semibold transition-colors"
+        title="Copy your unique storefront link"
+        @click="copyStorefrontLink"
+      >
+        <Copy class="w-3.5 h-3.5 text-charcoal-600" />
+        <span>Copy Link</span>
+      </button>
 
       <!-- Admin Profile & Logout -->
       <div class="flex items-center gap-2 pl-2 border-l border-cream-300 dark:border-charcoal-700">
@@ -85,7 +98,7 @@
 
 <script>
 import { mapGetters, mapActions } from 'vuex'
-import { Menu, Plus, Store, Sun, Moon, LogOut } from 'lucide-vue-next'
+import { Menu, Plus, Store, Sun, Moon, LogOut, Copy, ExternalLink } from 'lucide-vue-next'
 
 export default {
   name: 'AdminHeader',
@@ -95,11 +108,17 @@ export default {
     Store,
     Sun,
     Moon,
-    LogOut
+    LogOut,
+    Copy,
+    ExternalLink
   },
   emits: ['toggle-sidebar'],
   computed: {
-    ...mapGetters(['darkMode', 'adminName', 'adminEmail', 'allowThemeToggle']),
+    ...mapGetters(['darkMode', 'adminName', 'adminEmail', 'adminId', 'allowThemeToggle']),
+    storefrontPath() {
+      const id = this.adminId || 'jaydeep'
+      return `/s/${id}`
+    },
     pageTitle() {
       const path = this.$route.path
       if (path === '/admin') return 'Admin Dashboard'
@@ -130,6 +149,17 @@ export default {
         'Theme Mode',
         2200
       )
+    },
+    copyStorefrontLink() {
+      const id = this.adminId || 'jaydeep'
+      const origin = typeof window !== 'undefined' ? window.location.origin : ''
+      const url = `${origin}/s/${id}`
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(url)
+        this.$toast?.success(`Copied store link: ${url}`, 'Storefront Link Copied')
+      } else {
+        this.$toast?.info(`Storefront URL: ${url}`, 'Your Storefront')
+      }
     },
     handleLogout() {
       this.logout()

@@ -1,24 +1,37 @@
 const Order = require('../models/Order')
+const Setting = require('../models/Setting')
 const { sendNewOrderNotificationEmail } = require('../config/mailersend')
+const { DEFAULT_ADMIN_ID } = require('../middleware/tenant')
 
-const generateOrderId = async () => {
+const generateOrderId = async (adminId) => {
   const now = new Date()
   const yyyy = now.getFullYear()
   const mm = String(now.getMonth() + 1).padStart(2, '0')
   const dd = String(now.getDate()).padStart(2, '0')
-  const count = (await Order.countDocuments()) + 1
+  const count = (await Order.countDocuments({ adminId })) + 1
   const seq = String(count).padStart(3, '0')
-  return `PF-${yyyy}${mm}${dd}-${seq}`
+
+  // Use orderIdPrefix from settings if available, else default
+  let prefix = 'PF'
+  try {
+    const settings = await Setting.findOne({ adminId, key: 'global_studio_settings' })
+    if (settings && settings.orderIdPrefix) {
+      prefix = settings.orderIdPrefix.toUpperCase()
+    }
+  } catch (e) { /* ignore */ }
+
+  return `${prefix}-${yyyy}${mm}${dd}-${seq}`
 }
 
 /**
  * GET /api/orders
- * Returns active (non-deleted) orders
+ * Returns active (non-deleted) orders for this admin
  */
 exports.getOrders = async (req, res, next) => {
   try {
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
     const { status, q } = req.query
-    const query = { isDeleted: { $ne: true } }
+    const query = { adminId, isDeleted: { $ne: true } }
 
     if (status && status !== 'All') {
       query.status = status
@@ -27,7 +40,7 @@ exports.getOrders = async (req, res, next) => {
     if (q) {
       const regex = new RegExp(q, 'i')
       query.$and = [
-        { isDeleted: { $ne: true } },
+        { adminId, isDeleted: { $ne: true } },
         {
           $or: [
             { id: regex },
@@ -57,7 +70,8 @@ exports.getOrders = async (req, res, next) => {
  */
 exports.getDeletedOrders = async (req, res, next) => {
   try {
-    const orders = await Order.find({ isDeleted: true }).sort({ deletedAt: -1, updatedAt: -1 })
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
+    const orders = await Order.find({ adminId, isDeleted: true }).sort({ deletedAt: -1, updatedAt: -1 })
     res.json({
       success: true,
       count: orders.length,
@@ -74,9 +88,10 @@ exports.getDeletedOrders = async (req, res, next) => {
 exports.getOrderById = async (req, res, next) => {
   try {
     const { id } = req.params
-    let order = await Order.findOne({ id })
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
+    let order = await Order.findOne({ id, adminId })
     if (!order && id.match(/^[0-9a-fA-F]{24}$/)) {
-      order = await Order.findById(id)
+      order = await Order.findOne({ _id: id, adminId })
     }
 
     if (!order) {
@@ -91,14 +106,17 @@ exports.getOrderById = async (req, res, next) => {
 
 /**
  * POST /api/orders
+ * Customer places an order — adminId comes from x-admin-id header or query param
  */
 exports.createOrder = async (req, res, next) => {
   try {
-    const orderId = req.body.id || (await generateOrderId())
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
+    const orderId = req.body.id || (await generateOrderId(adminId))
     const today = new Date().toISOString().split('T')[0]
 
     const orderData = {
       ...req.body,
+      adminId,
       id: orderId,
       date: req.body.date || today,
       status: req.body.status || 'New',
@@ -109,10 +127,10 @@ exports.createOrder = async (req, res, next) => {
 
     const order = await Order.create(orderData)
 
-    // Send instant notification email with order details to Admin Gmail
+    // Send instant notification email to the admin who owns this store
     let emailResult = { success: false }
     try {
-      emailResult = await sendNewOrderNotificationEmail({ order })
+      emailResult = await sendNewOrderNotificationEmail({ order, adminId })
       console.log(`📨 [ORDER:CREATE] Admin email notification dispatch status for ${order.id}: ${emailResult.success ? 'Delivered' : 'Failed'}`)
     } catch (emailError) {
       console.warn(`⚠️ [ORDER:CREATE] Error sending admin order notification email for ${order.id}: ${emailError.message}`)
@@ -134,6 +152,7 @@ exports.createOrder = async (req, res, next) => {
 exports.updateOrderStatus = async (req, res, next) => {
   try {
     const { id } = req.params
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
     const { status } = req.body
 
     const validStatuses = ['New', 'Confirmed', 'Processing', 'Ready', 'Shipped', 'Delivered', 'Cancelled']
@@ -145,13 +164,13 @@ exports.updateOrderStatus = async (req, res, next) => {
     }
 
     let order = await Order.findOneAndUpdate(
-      { id },
+      { id, adminId },
       { status },
       { new: true, runValidators: true }
     )
 
     if (!order && id.match(/^[0-9a-fA-F]{24}$/)) {
-      order = await Order.findByIdAndUpdate(id, { status }, { new: true, runValidators: true })
+      order = await Order.findOneAndUpdate({ _id: id, adminId }, { status }, { new: true, runValidators: true })
     }
 
     if (!order) {
@@ -170,8 +189,9 @@ exports.updateOrderStatus = async (req, res, next) => {
 exports.deleteOrder = async (req, res, next) => {
   try {
     const { id } = req.params
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
     const order = await Order.findOneAndUpdate(
-      { $or: [{ id }, { _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null }] },
+      { $or: [{ id, adminId }, { _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null, adminId }] },
       { $set: { isDeleted: true, deletedAt: new Date() } },
       { new: true }
     )
@@ -196,8 +216,9 @@ exports.deleteOrder = async (req, res, next) => {
 exports.restoreOrder = async (req, res, next) => {
   try {
     const { id } = req.params
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
     const order = await Order.findOneAndUpdate(
-      { $or: [{ id }, { _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null }] },
+      { $or: [{ id, adminId }, { _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null, adminId }] },
       { $set: { isDeleted: false, deletedAt: null } },
       { new: true }
     )
@@ -222,8 +243,9 @@ exports.restoreOrder = async (req, res, next) => {
 exports.permanentDeleteOrder = async (req, res, next) => {
   try {
     const { id } = req.params
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
     const order = await Order.findOneAndDelete({
-      $or: [{ id }, { _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null }]
+      $or: [{ id, adminId }, { _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null, adminId }]
     })
 
     if (!order) {
@@ -246,12 +268,13 @@ exports.permanentDeleteOrder = async (req, res, next) => {
 exports.bulkDeleteOrders = async (req, res, next) => {
   try {
     const { ids } = req.body
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
     if (!Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ success: false, message: 'Please provide an array of order IDs.' })
     }
 
     const result = await Order.updateMany(
-      { id: { $in: ids } },
+      { id: { $in: ids }, adminId },
       { $set: { isDeleted: true, deletedAt: new Date() } }
     )
 
@@ -271,12 +294,13 @@ exports.bulkDeleteOrders = async (req, res, next) => {
 exports.bulkRestoreOrders = async (req, res, next) => {
   try {
     const { ids } = req.body
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
     if (!Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ success: false, message: 'Please provide an array of order IDs.' })
     }
 
     const result = await Order.updateMany(
-      { id: { $in: ids } },
+      { id: { $in: ids }, adminId },
       { $set: { isDeleted: false, deletedAt: null } }
     )
 
@@ -296,11 +320,12 @@ exports.bulkRestoreOrders = async (req, res, next) => {
 exports.bulkPermanentDeleteOrders = async (req, res, next) => {
   try {
     const { ids } = req.body
+    const adminId = req.adminId || DEFAULT_ADMIN_ID
     if (!Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ success: false, message: 'Please provide an array of order IDs.' })
     }
 
-    const result = await Order.deleteMany({ id: { $in: ids } })
+    const result = await Order.deleteMany({ id: { $in: ids }, adminId })
 
     res.json({
       success: true,

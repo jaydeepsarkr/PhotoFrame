@@ -2,6 +2,14 @@ const mongoose = require('mongoose')
 
 const orderSchema = new mongoose.Schema(
   {
+    adminId: {
+      type: String,
+      required: true,
+      default: 'jaydeep',
+      lowercase: true,
+      trim: true,
+      index: true
+    },
     id: {
       type: String,
       required: true,
@@ -79,6 +87,10 @@ const orderSchema = new mongoose.Schema(
     toObject: { virtuals: true }
   }
 )
+
+// Compound indexes for tenant isolation
+orderSchema.index({ adminId: 1, createdAt: -1 })
+orderSchema.index({ adminId: 1, isDeleted: 1, status: 1 })
 
 const Order = mongoose.model('Order', orderSchema)
 module.exports = Order

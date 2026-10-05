@@ -25,16 +25,64 @@ function getBaseUrl() {
   return '/api'
 }
 
+export function getActiveAdminId() {
+  if (typeof window === 'undefined') return 'jaydeep'
+
+  // 1. From URL path: /s/:adminId/...
+  const match = window.location.pathname.match(/^\/s\/([a-zA-Z0-9_-]+)/)
+  if (match && match[1]) {
+    return match[1].toLowerCase().trim()
+  }
+
+  // 2. From URL query param: ?adminId=...
+  try {
+    const urlParams = new URLSearchParams(window.location.search)
+    const qAdminId = urlParams.get('adminId')
+    if (qAdminId) {
+      return qAdminId.toLowerCase().trim()
+    }
+  } catch (e) { /* ignore */ }
+
+  // 3. From localStorage active storefront tenant
+  try {
+    const storedActive = localStorage.getItem('framevue_active_admin_id')
+    if (storedActive && storedActive.trim()) {
+      return storedActive.toLowerCase().trim()
+    }
+  } catch (e) { /* ignore */ }
+
+  // 4. If logged in as admin, use that admin's adminId
+  try {
+    const rawUser = localStorage.getItem('framevue_admin_user')
+    if (rawUser) {
+      const adminUser = JSON.parse(rawUser)
+      if (adminUser && adminUser.adminId) {
+        return adminUser.adminId.toLowerCase().trim()
+      }
+    }
+  } catch (e) { /* ignore */ }
+
+  return 'jaydeep'
+}
+
+export function setActiveAdminId(adminId) {
+  if (typeof localStorage !== 'undefined' && adminId) {
+    localStorage.setItem('framevue_active_admin_id', adminId.toLowerCase().trim())
+  }
+}
+
 const BASE_URL = getBaseUrl()
 
 export async function apiRequest(endpoint, options = {}) {
   const url = endpoint.startsWith('http') ? endpoint : `${BASE_URL}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`
 
   const token = typeof localStorage !== 'undefined' ? localStorage.getItem('framevue_admin_token') : null
+  const activeAdminId = getActiveAdminId()
 
   const config = {
     headers: {
       'Content-Type': 'application/json',
+      'x-admin-id': activeAdminId,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options.headers || {})
     },

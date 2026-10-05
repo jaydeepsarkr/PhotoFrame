@@ -49,7 +49,7 @@
             <li v-for="link in activeCollectionsLinks" :key="link.id || link.label">
               <router-link
                 v-if="isInternalLink(link.url)"
-                :to="link.url"
+                :to="storeUrl(link.url)"
                 class="hover:text-white transition-colors"
               >
                 {{ link.label }}
@@ -76,7 +76,7 @@
             <li v-for="link in activeDesignsLinks" :key="link.id || link.label">
               <router-link
                 v-if="isInternalLink(link.url)"
-                :to="link.url"
+                :to="storeUrl(link.url)"
                 class="hover:text-white transition-colors"
               >
                 {{ link.label }}
@@ -267,11 +267,23 @@ export default {
         'Pan-India Insured Delivery',
         '100% Custom Made'
       ]
+    },
+
+    currentAdminId() {
+      return this.$route.params.adminId || this.$store.state.activeAdminId || null
     }
   },
   methods: {
     isInternalLink(url) {
       return url && typeof url === 'string' && url.startsWith('/') && !url.startsWith('//')
+    },
+
+    storeUrl(path) {
+      if (!this.isInternalLink(path)) return path
+      if (this.currentAdminId && (this.$route.path.startsWith('/s/') || this.$route.params.adminId)) {
+        return `/s/${this.currentAdminId}${path === '/' ? '' : path}`
+      }
+      return path
     },
 
     cleanPhone(num) {

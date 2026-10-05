@@ -16,6 +16,8 @@ export default {
     adminRole: (state) => state.admin?.role || 'admin',
     adminEmail: (state) => state.admin?.email || '',
     adminName: (state) => state.admin?.name || 'Administrator',
+    adminId: (state) => state.admin?.adminId || 'jaydeep',
+    studioName: (state) => state.admin?.studioName || 'Atelier Cadre',
     authLoading: (state) => state.loading,
     authError: (state) => state.error,
     loginStep: (state) => state.step,

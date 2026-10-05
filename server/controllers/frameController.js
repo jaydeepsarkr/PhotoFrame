@@ -45,6 +45,16 @@ function buildBulkQuery(ids) {
 
 exports.getFrames = async (req, res, next) => {
   try {
+    const mongoose = require('mongoose')
+    if (mongoose.connection.readyState !== 1) {
+      return res.json({
+        success: true,
+        count: defaultFrames.length,
+        data: defaultFrames,
+        warning: 'Database query fallback used'
+      })
+    }
+
     const { material, style, status, sort } = req.query
     const query = { isDeleted: { $ne: true } }
 

@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken')
+const mongoose = require('mongoose')
 const Admin = require('../models/Admin')
 const { sendOtpEmail, sendSignupOtpEmail } = require('../config/mailersend')
 
@@ -15,6 +16,15 @@ const login = async (req, res, next) => {
 
     console.log(`\n------------------------------------------------------`)
     console.log(`🔐 [AUTH:LOGIN] Login attempt received for: ${email}`)
+
+    if (mongoose.connection.readyState !== 1) {
+      console.warn(`⚠️ [AUTH:LOGIN] Database not connected (readyState=${mongoose.connection.readyState})`)
+      return res.status(503).json({
+        success: false,
+        message:
+          'Database is offline. Please configure MONGODB_URI in Render Environment Variables and whitelist 0.0.0.0/0 in MongoDB Atlas Network Access.'
+      })
+    }
 
     if (!email || !password) {
       console.warn(`⚠️ [AUTH:LOGIN] Missing email or password`)
@@ -105,6 +115,14 @@ const verifyOtp = async (req, res, next) => {
 
     console.log(`\n------------------------------------------------------`)
     console.log(`🔎 [AUTH:VERIFY] Verifying login OTP for: ${email}`)
+
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        success: false,
+        message:
+          'Database is offline. Please configure MONGODB_URI in Render Environment Variables and whitelist 0.0.0.0/0 in MongoDB Atlas Network Access.'
+      })
+    }
 
     if (!email || !otp) {
       return res.status(400).json({

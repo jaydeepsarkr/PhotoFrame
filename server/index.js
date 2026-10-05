@@ -32,9 +32,16 @@ app.get('/api/health', (req, res) => {
   const mongoStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
 
   res.json({
-    status: 'ok',
+    status: mongoStatus === 'connected' ? 'ok' : 'degraded',
     message: 'FrameVue API Server is active',
     timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+    database: {
+      status: mongoStatus,
+      readyState: mongoose.connection.readyState,
+      isUriConfigured: Boolean(process.env.MONGODB_URI),
+      host: mongoose.connection.host || 'none'
+    },
     services: {
       database: mongoStatus,
       cloudinary: isCloudinaryConfigured() ? 'configured' : 'fallback-simulation'

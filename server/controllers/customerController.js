@@ -50,6 +50,9 @@ const SAMPLE_CUSTOMERS = [
  */
 async function syncCustomersFromOrders() {
   try {
+    const mongoose = require('mongoose')
+    if (mongoose.connection.readyState !== 1) return
+
     const orders = await Order.find({ isDeleted: { $ne: true } })
     const customerMap = new Map()
 
@@ -130,6 +133,16 @@ async function syncCustomersFromOrders() {
  */
 exports.getCustomers = async (req, res, next) => {
   try {
+    const mongoose = require('mongoose')
+    if (mongoose.connection.readyState !== 1) {
+      return res.json({
+        success: true,
+        count: SAMPLE_CUSTOMERS.length,
+        data: SAMPLE_CUSTOMERS,
+        fallback: true
+      })
+    }
+
     await syncCustomersFromOrders()
 
     const customers = await Customer.find({ isDeleted: { $ne: true } }).sort({ lastOrderDate: -1, updatedAt: -1 })

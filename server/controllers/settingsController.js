@@ -82,6 +82,16 @@ const DEFAULT_SETTINGS = {
  */
 exports.getSettings = async (req, res, next) => {
   try {
+    const mongoose = require('mongoose')
+    if (mongoose.connection.readyState !== 1) {
+      return res.json({
+        success: true,
+        data: DEFAULT_SETTINGS,
+        fallback: true,
+        note: 'Database disconnected, using defaults'
+      })
+    }
+
     let settings = await Setting.findOne({ key: 'global_studio_settings' })
     if (!settings) {
       settings = await Setting.create(DEFAULT_SETTINGS)

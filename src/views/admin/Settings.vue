@@ -752,14 +752,32 @@ export default {
       }
     }
   },
-  mounted() {
+  watch: {
+    allSettings: {
+      deep: true,
+      handler(val) {
+        if (val && !this.saving && !this.uploadingLogo) {
+          this.loadSettingsIntoForm(val)
+        }
+      }
+    }
+  },
+  async mounted() {
     this.loadSettingsIntoForm()
+    try {
+      const refreshed = await this.$store.dispatch('settings/fetchSettings')
+      if (refreshed) {
+        this.loadSettingsIntoForm(refreshed)
+      }
+    } catch (e) {
+      console.warn('Settings refresh on mount:', e.message)
+    }
   },
   methods: {
     ...mapActions('settings', ['updateSettings', 'resetSettings']),
 
-    loadSettingsIntoForm() {
-      const current = this.allSettings || {}
+    loadSettingsIntoForm(customSource) {
+      const current = customSource || this.allSettings || {}
       this.form = {
         brandName: current.brandName || 'AtelierAdmin',
         brandSubtitle: current.brandSubtitle || 'Studio Console',
@@ -789,11 +807,14 @@ export default {
 
       this.uploadingLogo = true
       try {
-        console.log(`🖼️ [SETTINGS:LOGO] Uploading custom admin logo to Cloudinary: ${file.name}`)
+        console.log(`🖼️ [SETTINGS:LOGO] Uploading custom admin logo: ${file.name}`)
         const result = await uploadService.uploadFileToCloudinary(file)
         this.form.logoUrl = result.url
-        console.log(`✅ [SETTINGS:LOGO] Cloudinary logo asset ready:`, result.url)
-        this.$toast?.success('Custom logo uploaded! Click "Save Settings" to apply live across the console.', 'Logo Uploaded')
+        console.log(`✅ [SETTINGS:LOGO] Logo asset ready:`, result.url)
+
+        // Immediately auto-persist so refreshing the page never loses the logo
+        await this.updateSettings({ ...this.form, logoUrl: result.url })
+        this.$toast?.success('Studio logo updated and synchronized live across console & emails!', 'Logo Updated')
       } catch (err) {
         console.error('❌ [SETTINGS:LOGO] Upload failed:', err.message)
         this.$toast?.error(err.message || 'Failed to upload logo image.', 'Upload Failed')
@@ -803,9 +824,14 @@ export default {
       }
     },
 
-    removeLogo() {
+    async removeLogo() {
       this.form.logoUrl = ''
-      this.$toast?.info('Custom logo removed. Default studio icon restored.', 'Logo Reset')
+      try {
+        await this.updateSettings({ ...this.form, logoUrl: '' })
+        this.$toast?.info('Custom logo removed. Default studio icon restored.', 'Logo Reset')
+      } catch (e) {
+        this.$toast?.error('Failed to reset logo.', 'Error')
+      }
     },
 
     copyStoreUrl() {

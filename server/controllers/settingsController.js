@@ -107,7 +107,7 @@ exports.getSettings = async (req, res, next) => {
     console.warn('⚠️ [SETTINGS:GET] Error retrieving settings, returning defaults:', error.message)
     res.json({
       success: true,
-      data: DEFAULT_SETTINGS,
+      data: { ...DEFAULT_SETTINGS, adminId: req.adminId || DEFAULT_ADMIN_ID },
       fallback: true
     })
   }
@@ -119,6 +119,8 @@ exports.getSettings = async (req, res, next) => {
  */
 exports.updateSettings = async (req, res, next) => {
   try {
+    const mongoose = require('mongoose')
+    const Admin = require('../models/Admin')
     const adminId = req.adminId || DEFAULT_ADMIN_ID
 
     console.log(`\n======================================================`)
@@ -129,11 +131,33 @@ exports.updateSettings = async (req, res, next) => {
     const updateData = { ...req.body }
     delete updateData.adminId
 
+    if (mongoose.connection.readyState !== 1) {
+      console.warn('⚠️ [SETTINGS:UPDATE] Database offline or buffering, returning fallback response')
+      return res.json({
+        success: true,
+        message: 'Studio settings cached locally (database offline).',
+        data: { ...DEFAULT_SETTINGS, ...updateData, adminId },
+        fallback: true
+      })
+    }
+
     let settings = await Setting.findOneAndUpdate(
       { adminId, key: 'global_studio_settings' },
       { $set: updateData },
       { new: true, upsert: true, runValidators: true }
     )
+
+    // Also synchronize admin studioName if brandName was modified
+    if (updateData.brandName && typeof updateData.brandName === 'string') {
+      try {
+        await Admin.findOneAndUpdate(
+          { adminId },
+          { studioName: updateData.brandName.trim() }
+        )
+      } catch (e) {
+        // non-blocking
+      }
+    }
 
     res.json({
       success: true,

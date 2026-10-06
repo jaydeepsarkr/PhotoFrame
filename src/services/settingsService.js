@@ -1,6 +1,16 @@
-import { apiRequest } from './apiClient'
+import { apiRequest, getActiveAdminId } from './apiClient'
 
-const SETTINGS_STORAGE_KEY = 'framevue_studio_settings_v2'
+const SETTINGS_STORAGE_KEY_BASE = 'framevue_studio_settings'
+const LEGACY_STORAGE_KEY = 'framevue_studio_settings_v2'
+
+function getStorageKey() {
+  try {
+    const adminId = getActiveAdminId()
+    return `${SETTINGS_STORAGE_KEY_BASE}_${adminId || 'default'}`
+  } catch (e) {
+    return LEGACY_STORAGE_KEY
+  }
+}
 
 export const defaultFooterSettings = {
   enabled: true,
@@ -82,7 +92,8 @@ export const defaultSettings = {
 export const settingsService = {
   loadLocalSettings() {
     try {
-      const raw = localStorage.getItem(SETTINGS_STORAGE_KEY)
+      const key = getStorageKey()
+      const raw = localStorage.getItem(key) || localStorage.getItem(LEGACY_STORAGE_KEY)
       if (raw) {
         const parsed = JSON.parse(raw)
         return { ...defaultSettings, ...parsed }
@@ -95,7 +106,10 @@ export const settingsService = {
 
   saveLocalSettings(settings) {
     try {
-      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings))
+      const key = getStorageKey()
+      localStorage.setItem(key, JSON.stringify(settings))
+      // Also sync to legacy fallback key for seamless backward compatibility
+      localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify(settings))
     } catch (e) {
       console.warn('Failed to save settings to storage:', e)
     }
@@ -105,7 +119,14 @@ export const settingsService = {
     try {
       const res = await apiRequest('/settings')
       if (res && res.success && res.data) {
-        const merged = { ...defaultSettings, ...res.data }
+        const local = this.loadLocalSettings()
+        // If the backend response is a fallback (e.g. temporary DB disconnection),
+        // protect and retain any existing custom studio branding saved locally!
+        if (res.fallback && (local.logoUrl || (local.brandName && local.brandName !== 'AtelierAdmin'))) {
+          console.warn('⚠️ [SETTINGS] Server returned fallback defaults; retaining active custom studio branding from storage.')
+          return local
+        }
+        const merged = { ...defaultSettings, ...local, ...res.data }
         this.saveLocalSettings(merged)
         return merged
       }
@@ -128,8 +149,9 @@ export const settingsService = {
         body: merged
       })
       if (res && res.success && res.data) {
-        this.saveLocalSettings(res.data)
-        return res.data
+        const finalSettings = { ...merged, ...res.data }
+        this.saveLocalSettings(finalSettings)
+        return finalSettings
       }
     } catch (err) {
       console.warn('Failed to sync settings with server, saved locally:', err.message)

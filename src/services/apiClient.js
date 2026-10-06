@@ -28,13 +28,30 @@ function getBaseUrl() {
 export function getActiveAdminId() {
   if (typeof window === 'undefined') return 'jaydeep'
 
-  // 1. From URL path: /s/:adminId/...
+  // 1. If currently inside admin dashboard or admin routes, ALWAYS prioritize authenticated admin
+  if (window.location.pathname.startsWith('/admin')) {
+    try {
+      const rawUser = localStorage.getItem('framevue_admin_user')
+      if (rawUser) {
+        const adminUser = JSON.parse(rawUser)
+        if (adminUser && adminUser.adminId) {
+          return adminUser.adminId.toLowerCase().trim()
+        }
+      }
+      const adminIdOnly = localStorage.getItem('framevue_admin_id')
+      if (adminIdOnly && adminIdOnly.trim()) {
+        return adminIdOnly.toLowerCase().trim()
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  // 2. From URL path: /s/:adminId/...
   const match = window.location.pathname.match(/^\/s\/([a-zA-Z0-9_-]+)/)
   if (match && match[1]) {
     return match[1].toLowerCase().trim()
   }
 
-  // 2. From URL query param: ?adminId=...
+  // 3. From URL query param: ?adminId=...
   try {
     const urlParams = new URLSearchParams(window.location.search)
     const qAdminId = urlParams.get('adminId')
@@ -43,7 +60,7 @@ export function getActiveAdminId() {
     }
   } catch (e) { /* ignore */ }
 
-  // 3. From localStorage active storefront tenant
+  // 4. From localStorage active storefront tenant
   try {
     const storedActive = localStorage.getItem('framevue_active_admin_id')
     if (storedActive && storedActive.trim()) {
@@ -51,7 +68,7 @@ export function getActiveAdminId() {
     }
   } catch (e) { /* ignore */ }
 
-  // 4. If logged in as admin, use that admin's adminId
+  // 5. If logged in as admin, use that admin's adminId
   try {
     const rawUser = localStorage.getItem('framevue_admin_user')
     if (rawUser) {
@@ -59,6 +76,10 @@ export function getActiveAdminId() {
       if (adminUser && adminUser.adminId) {
         return adminUser.adminId.toLowerCase().trim()
       }
+    }
+    const adminIdOnly = localStorage.getItem('framevue_admin_id')
+    if (adminIdOnly && adminIdOnly.trim()) {
+      return adminIdOnly.toLowerCase().trim()
     }
   } catch (e) { /* ignore */ }
 

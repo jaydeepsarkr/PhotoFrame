@@ -15,6 +15,21 @@ const resolveAdminId = (req) => {
     return req.admin.adminId.toLowerCase().trim()
   }
 
+  // 1b. Check JWT Bearer token directly from Authorization header if present
+  if (req.headers && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+    try {
+      const jwt = require('jsonwebtoken')
+      const token = req.headers.authorization.split(' ')[1]
+      const secret = process.env.JWT_SECRET || 'super_secret_jwt_key_framevue_atelier_cadre_2026'
+      const decoded = jwt.verify(token, secret)
+      if (decoded && decoded.adminId) {
+        return decoded.adminId.toLowerCase().trim()
+      }
+    } catch (e) {
+      // ignore invalid token here
+    }
+  }
+
   // 2. Custom tenant header: 'x-admin-id'
   const headerId = req.headers['x-admin-id']
   if (headerId && typeof headerId === 'string' && headerId.trim().length > 0) {

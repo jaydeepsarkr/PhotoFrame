@@ -242,6 +242,17 @@ router.beforeEach((to, from, next) => {
     (typeof localStorage !== 'undefined' && localStorage.getItem('framevue_admin_token'))
 
   if (to.path.startsWith('/admin')) {
+    // Ensure active tenant in store is synchronized to the logged-in admin
+    try {
+      const storedAdminUser = localStorage.getItem('framevue_admin_user')
+      if (storedAdminUser) {
+        const u = JSON.parse(storedAdminUser)
+        if (u && u.adminId && store.state.activeAdminId !== u.adminId.toLowerCase().trim()) {
+          store.commit('SET_ACTIVE_ADMIN_ID', u.adminId.toLowerCase().trim())
+        }
+      }
+    } catch (e) { /* ignore */ }
+
     // If going to login or signup page
     if (to.path === '/admin/login' || to.path === '/admin/signup') {
       if (token) {

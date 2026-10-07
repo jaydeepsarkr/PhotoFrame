@@ -809,12 +809,16 @@ export default {
       try {
         console.log(`🖼️ [SETTINGS:LOGO] Uploading custom admin logo: ${file.name}`)
         const result = await uploadService.uploadFileToCloudinary(file)
-        this.form.logoUrl = result.url
-        console.log(`✅ [SETTINGS:LOGO] Logo asset ready:`, result.url)
+        const finalUrl = (result.url || '').trim()
+        this.form.logoUrl = finalUrl
+        console.log(`✅ [SETTINGS:LOGO] Logo asset ready:`, finalUrl)
 
         // Immediately auto-persist so refreshing the page never loses the logo
-        await this.updateSettings({ ...this.form, logoUrl: result.url })
-        this.$toast?.success('Studio logo updated and synchronized live across console & emails!', 'Logo Updated')
+        const updated = await this.updateSettings({ ...this.form, logoUrl: finalUrl })
+        if (updated) {
+          this.loadSettingsIntoForm(updated)
+        }
+        this.$toast?.success('Studio logo uploaded and synchronized live across console & emails!', 'Logo Updated')
       } catch (err) {
         console.error('❌ [SETTINGS:LOGO] Upload failed:', err.message)
         this.$toast?.error(err.message || 'Failed to upload logo image.', 'Upload Failed')
@@ -827,7 +831,10 @@ export default {
     async removeLogo() {
       this.form.logoUrl = ''
       try {
-        await this.updateSettings({ ...this.form, logoUrl: '' })
+        const updated = await this.updateSettings({ ...this.form, logoUrl: '' })
+        if (updated) {
+          this.loadSettingsIntoForm(updated)
+        }
         this.$toast?.info('Custom logo removed. Default studio icon restored.', 'Logo Reset')
       } catch (e) {
         this.$toast?.error('Failed to reset logo.', 'Error')
@@ -848,9 +855,17 @@ export default {
       this.saving = true
       this.statusMessage = ''
       try {
-        await this.updateSettings(this.form)
+        const payload = { ...this.form }
+        if (payload.logoUrl) payload.logoUrl = payload.logoUrl.trim()
+        if (payload.brandName) payload.brandName = payload.brandName.trim()
+        if (payload.brandSubtitle) payload.brandSubtitle = payload.brandSubtitle.trim()
+
+        const updated = await this.updateSettings(payload)
+        if (updated) {
+          this.loadSettingsIntoForm(updated)
+        }
         this.statusType = 'success'
-        this.statusMessage = 'Settings saved successfully! Changes are now active across the platform.'
+        this.statusMessage = 'Settings saved successfully! Logo and branding are active live across the console & emails.'
         this.$toast?.success('Studio settings & branding saved successfully!', 'Settings Saved')
       } catch (err) {
         this.statusType = 'error'

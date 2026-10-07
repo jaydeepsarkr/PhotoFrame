@@ -84,7 +84,7 @@ const DEFAULT_SETTINGS = {
 exports.getSettings = async (req, res, next) => {
   try {
     const mongoose = require('mongoose')
-    const adminId = req.adminId || DEFAULT_ADMIN_ID
+    const adminId = (req.adminId || req.admin?.adminId || DEFAULT_ADMIN_ID).toLowerCase().trim()
 
     if (mongoose.connection.readyState !== 1) {
       return res.json({
@@ -96,9 +96,19 @@ exports.getSettings = async (req, res, next) => {
     }
 
     let settings = await Setting.findOne({ adminId, key: 'global_studio_settings' })
+    if (!settings && adminId === DEFAULT_ADMIN_ID) {
+      // Check for legacy record created before multi-tenant indexing
+      settings = await Setting.findOne({ key: 'global_studio_settings' })
+      if (settings && !settings.adminId) {
+        settings.adminId = DEFAULT_ADMIN_ID
+        await settings.save()
+      }
+    }
+
     if (!settings) {
       settings = await Setting.create({ ...DEFAULT_SETTINGS, adminId })
     }
+
     res.json({
       success: true,
       data: settings
@@ -121,15 +131,34 @@ exports.updateSettings = async (req, res, next) => {
   try {
     const mongoose = require('mongoose')
     const Admin = require('../models/Admin')
-    const adminId = req.adminId || DEFAULT_ADMIN_ID
+    const adminId = (req.adminId || req.admin?.adminId || DEFAULT_ADMIN_ID).toLowerCase().trim()
 
     console.log(`\n======================================================`)
-    console.log(`⚙️  [SETTINGS:UPDATE] Updating studio settings for: ${adminId}`)
+    console.log(`⚙️  [SETTINGS:UPDATE] Updating studio settings for tenant: "${adminId}"`)
     console.log(`======================================================\n`)
 
-    // Prevent overwriting adminId via body
+    // Strip immutable, metadata, and primary key fields that cause MongoDB findOneAndUpdate to reject
     const updateData = { ...req.body }
+    delete updateData._id
+    delete updateData.id
+    delete updateData.__v
+    delete updateData.createdAt
+    delete updateData.updatedAt
     delete updateData.adminId
+    delete updateData.key
+
+    // Ensure strings are sanitized
+    if (typeof updateData.logoUrl === 'string') {
+      updateData.logoUrl = updateData.logoUrl.trim()
+    }
+    if (typeof updateData.brandName === 'string') {
+      updateData.brandName = updateData.brandName.trim()
+    }
+    if (typeof updateData.brandSubtitle === 'string') {
+      updateData.brandSubtitle = updateData.brandSubtitle.trim()
+    }
+
+    console.log(`🖼️ [SETTINGS:UPDATE] Saving logoUrl: "${updateData.logoUrl || ''}", brandName: "${updateData.brandName || ''}"`)
 
     if (mongoose.connection.readyState !== 1) {
       console.warn('⚠️ [SETTINGS:UPDATE] Database offline or buffering, returning fallback response')
@@ -147,12 +176,14 @@ exports.updateSettings = async (req, res, next) => {
       { new: true, upsert: true, runValidators: true }
     )
 
+    console.log(`✅ [SETTINGS:UPDATE] Successfully saved to MongoDB for "${adminId}". Stored logoUrl: "${settings.logoUrl || ''}"`)
+
     // Also synchronize admin studioName if brandName was modified
     if (updateData.brandName && typeof updateData.brandName === 'string') {
       try {
         await Admin.findOneAndUpdate(
           { adminId },
-          { studioName: updateData.brandName.trim() }
+          { studioName: updateData.brandName }
         )
       } catch (e) {
         // non-blocking

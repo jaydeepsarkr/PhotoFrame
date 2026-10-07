@@ -120,13 +120,24 @@ export const settingsService = {
       const res = await apiRequest('/settings')
       if (res && res.success && res.data) {
         const local = this.loadLocalSettings()
-        // If the backend response is a fallback (e.g. temporary DB disconnection),
-        // protect and retain any existing custom studio branding saved locally!
-        if (res.fallback && (local.logoUrl || (local.brandName && local.brandName !== 'AtelierAdmin'))) {
-          console.warn('⚠️ [SETTINGS] Server returned fallback defaults; retaining active custom studio branding from storage.')
-          return local
+
+        // Preserve custom logo if local storage already has one and server returned empty
+        const serverLogo = (res.data.logoUrl && typeof res.data.logoUrl === 'string' && res.data.logoUrl.trim()) || ''
+        const localLogo = (local.logoUrl && typeof local.logoUrl === 'string' && local.logoUrl.trim()) || ''
+        const finalLogo = serverLogo || localLogo
+
+        // Preserve custom brand if server returned default 'AtelierAdmin' but local has custom
+        const serverBrand = (res.data.brandName && res.data.brandName !== 'AtelierAdmin') ? res.data.brandName : ''
+        const localBrand = (local.brandName && local.brandName !== 'AtelierAdmin') ? local.brandName : ''
+        const finalBrand = serverBrand || localBrand || res.data.brandName || defaultSettings.brandName
+
+        const merged = {
+          ...defaultSettings,
+          ...local,
+          ...res.data,
+          logoUrl: finalLogo,
+          brandName: finalBrand
         }
-        const merged = { ...defaultSettings, ...local, ...res.data }
         this.saveLocalSettings(merged)
         return merged
       }
@@ -137,16 +148,26 @@ export const settingsService = {
   },
 
   async updateSettings(newSettings) {
-    // 1. Immediately update localStorage for instant reactivity
+    // 1. Clean payload - strip immutable & internal fields
+    const payload = { ...newSettings }
+    delete payload._id
+    delete payload.id
+    delete payload.__v
+    delete payload.createdAt
+    delete payload.updatedAt
+    delete payload.adminId
+    delete payload.key
+
+    // 2. Immediately update localStorage for instant reactivity
     const current = this.loadLocalSettings()
-    const merged = { ...current, ...newSettings }
+    const merged = { ...current, ...payload }
     this.saveLocalSettings(merged)
 
-    // 2. Sync with backend API
+    // 3. Sync with backend API
     try {
       const res = await apiRequest('/settings', {
         method: 'PUT',
-        body: merged
+        body: payload
       })
       if (res && res.success && res.data) {
         const finalSettings = { ...merged, ...res.data }
@@ -154,7 +175,8 @@ export const settingsService = {
         return finalSettings
       }
     } catch (err) {
-      console.warn('Failed to sync settings with server, saved locally:', err.message)
+      console.error('💥 [SETTINGS:SERVICE] Failed to sync settings with server:', err.message)
+      throw err
     }
     return merged
   }

@@ -158,6 +158,7 @@
                   :src="frame.image"
                   :alt="frame.name"
                   class="w-14 h-14 rounded-xl object-cover border border-cream-300"
+                  @error="(e) => e.target.src = 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=900&q=80'"
                 />
               </td>
 
@@ -260,6 +261,7 @@
           :src="viewingFrame.image"
           :alt="viewingFrame.name"
           class="w-full h-56 object-cover rounded-2xl border border-cream-200"
+          @error="(e) => e.target.src = 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=900&q=80'"
         />
         <p class="text-sm text-charcoal-800/80 leading-relaxed">
           {{ viewingFrame.description }}

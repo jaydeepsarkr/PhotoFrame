@@ -9,6 +9,7 @@
         :alt="frame.name"
         class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
         loading="lazy"
+        @error="(e) => e.target.src = 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=900&q=80'"
       />
       <div class="absolute top-3 left-3 flex flex-wrap gap-1.5">
         <span class="px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide bg-white/95 text-charcoal-900 backdrop-blur-sm shadow-sm">

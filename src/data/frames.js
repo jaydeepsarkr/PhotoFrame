@@ -120,7 +120,7 @@ export const initialFrames = [
     price: 1599,
     discountPrice: null,
     sizes: ['12x18', '16x20', '20x24'],
-    image: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=900&q=80',
+    image: 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=900&q=80',
     borderTexture: 'frame-texture-gold',
     borderColor: '#A67A32',
     popular: false,

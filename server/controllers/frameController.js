@@ -73,6 +73,12 @@ exports.getFrames = async (req, res, next) => {
     else if (sort === 'newest') sortOption = { isNew: -1, createdAt: -1 }
 
     const frames = await Frame.find(query).sort(sortOption)
+    frames.forEach(f => {
+      if (f.image && f.image.includes('photo-1579783902614')) {
+        f.image = 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=900&q=80'
+        f.save().catch(() => {})
+      }
+    })
     res.json({
       success: true,
       count: frames.length,
@@ -115,6 +121,11 @@ exports.getFrameById = async (req, res, next) => {
 
     if (!frame) {
       return res.status(404).json({ success: false, message: 'Frame not found' })
+    }
+
+    if (frame.image && frame.image.includes('photo-1579783902614')) {
+      frame.image = 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=900&q=80'
+      frame.save().catch(() => {})
     }
 
     res.json({ success: true, data: frame })

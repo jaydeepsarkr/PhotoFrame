@@ -17,6 +17,7 @@
             :src="frame.image"
             :alt="frame.name"
             class="w-full h-full object-cover"
+            @error="(e) => e.target.src = 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=900&q=80'"
           />
           <div class="absolute top-4 left-4 flex items-center gap-2">
             <span class="px-3 py-1 rounded-full text-xs font-semibold bg-white/95 text-charcoal-900 shadow-sm">

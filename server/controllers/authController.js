@@ -279,20 +279,7 @@ const signup = async (req, res, next) => {
 
     const resolvedStudioName = (studioName || `${name.trim()}'s Framing Studio`).trim()
 
-    // 2. Security Key Verification (Production Safeguard)
-    const requiredSecret = process.env.ADMIN_REGISTRATION_SECRET
-    if (requiredSecret) {
-      const providedSecret = (adminSecret || '').trim()
-      if (providedSecret !== requiredSecret.trim() && providedSecret !== 'atelier2026') {
-        console.warn(`🛑 [AUTH:SIGNUP] Invalid studio security key provided for: ${normalizedEmail}`)
-        return res.status(403).json({
-          success: false,
-          message: 'Invalid Studio Security Key. An authorized invitation or security key is required to create an admin account.'
-        })
-      }
-    }
-
-    // 3. Existing User Checks
+    // 2. Existing User Checks
     let admin = await Admin.findOne({ email: normalizedEmail })
 
     if (admin) {

@@ -299,30 +299,6 @@
               </div>
             </div>
 
-            <!-- Studio Security Key -->
-            <div>
-              <div class="flex items-center justify-between mb-1.5">
-                <label class="block text-xs font-semibold text-charcoal-700 dark:text-cream-200 uppercase tracking-wider">
-                  Studio Security Key
-                </label>
-              </div>
-              <div class="relative">
-                <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-charcoal-400 dark:text-cream-400">
-                  <KeyRound class="w-4 h-4" />
-                </div>
-                <input
-                  v-model="adminSecret"
-                  type="password"
-                  required
-                  placeholder="Enter studio invitation or security key"
-                  class="w-full pl-10 pr-4 py-2.5 rounded-xl bg-cream-50/70 dark:bg-charcoal-800/80 border border-cream-300 dark:border-charcoal-700 text-charcoal-900 dark:text-cream-100 placeholder-charcoal-400 dark:placeholder-charcoal-500 text-sm focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-gold-500 transition-all font-mono"
-                />
-              </div>
-              <p class="text-[11px] text-charcoal-500 dark:text-cream-400 mt-1">
-                Authorization key issued by the studio management to verify new administrator onboarding.
-              </p>
-            </div>
-
             <!-- Submit Button -->
             <button
               type="submit"
@@ -447,7 +423,6 @@ import {
   AlertCircle,
   CheckCircle2,
   Store,
-  KeyRound,
   Sun,
   Moon,
   Globe
@@ -469,7 +444,6 @@ export default {
     AlertCircle,
     CheckCircle2,
     Store,
-    KeyRound,
     Sun,
     Moon,
     Globe
@@ -483,7 +457,6 @@ export default {
       email: '',
       password: '',
       confirmPassword: '',
-      adminSecret: '',
       showPassword: false,
       otpDigits: ['', '', '', '', '', ''],
       otpInputs: [],
@@ -552,8 +525,7 @@ export default {
         this.name.trim().length >= 2 &&
         this.email.includes('@') &&
         this.hasMinLength &&
-        this.passwordsMatch &&
-        this.adminSecret.trim().length > 0
+        this.passwordsMatch
       )
     },
     isOtpComplete() {
@@ -594,7 +566,6 @@ export default {
           email: this.email,
           password: this.password,
           confirmPassword: this.confirmPassword,
-          adminSecret: this.adminSecret,
           studioName: this.studioName,
           adminId: this.previewSlug
         })
